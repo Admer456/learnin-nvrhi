@@ -1,0 +1,8 @@
+[submodule "external/nvrhi"]
+	path = external/nvrhi
+	url = https://github.com/NVIDIAGameWorks/nvrhi
+	branch = main
+	shallow = 1
+[submodule "external/adm-utils"]
+	path = external/adm-utils
+	url = https://github.com/Admer456/adm-utils
