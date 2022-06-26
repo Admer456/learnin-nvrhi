@@ -19,6 +19,17 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+bool Check( void* ptr, const char* message )
+{
+	if ( nullptr == ptr )
+	{
+		std::cout << "FATAL ERROR: " << message << std::endl;
+		return false;
+	}
+
+	return true;
+}
+
 namespace Model
 {
 	struct DrawVertex
@@ -249,16 +260,16 @@ namespace Model
 		const std::vector<float> Vertices =
 		{
 			-1.0f, -1.0f,
-			0.0f, 0.0f,
+			0.0f, 1.0f,
 
 			1.0f, -1.0f,
+			1.0f, 1.0f,
+
+			1.0f, 1.0f,
 			1.0f, 0.0f,
 
-			1.0f, 1.0f,
-			1.0f, 1.0f,
-
 			-1.0f, 1.0f,
-			0.0f, 1.0f
+			0.0f, 0.0f
 		};
 
 		const std::vector<uint32_t> Indices =
@@ -322,6 +333,11 @@ namespace Texture
 			int x, y, comps;
 			data = stbi_load( fileName, &x, &y, &comps, 4 );
 		
+			if ( nullptr == data )
+			{
+				return;
+			}
+
 			width = x;
 			height = y;
 			components = 4;
@@ -403,28 +419,48 @@ namespace Renderer
 	nvrhi::app::DeviceManager* DeviceManager;
 	nvrhi::IDevice* Device;
 
-	// Pipeline state
-	nvrhi::GraphicsPipelineHandle Pipeline;
-	nvrhi::InputLayoutHandle InputLayout;
-	nvrhi::ShaderHandle VertexShader;
-	nvrhi::ShaderHandle PixelShader;
+	// Fullscreen framebuffer rendering
+	namespace ScreenQuad
+	{
+		// Pipeline state
+		nvrhi::GraphicsPipelineHandle Pipeline;
+		nvrhi::InputLayoutHandle InputLayout;
+		nvrhi::ShaderHandle VertexShader;
+		nvrhi::ShaderHandle PixelShader;
 
-	// Framebuffers
-	nvrhi::TextureHandle MainFramebufferColourImage;
-	nvrhi::TextureHandle MainFramebufferDepthImage;
-	nvrhi::FramebufferHandle MainFramebuffer;
+		// Data
+		nvrhi::BufferHandle VertexBuffer;
+		nvrhi::BufferHandle IndexBuffer;
 
-	// Data
-	nvrhi::BufferHandle VertexBuffer;
-	nvrhi::BufferHandle IndexBuffer;
+		nvrhi::BindingLayoutHandle BindingLayout;
+		nvrhi::BindingSetHandle BindingSet;
+	}
 
-	nvrhi::TextureHandle DiffuseTexture;
-	nvrhi::SamplerHandle DiffuseTextureSampler;
+	namespace Scene
+	{
+		// Pipeline state
+		nvrhi::GraphicsPipelineHandle Pipeline;
+		nvrhi::InputLayoutHandle InputLayout;
+		nvrhi::ShaderHandle VertexShader;
+		nvrhi::ShaderHandle PixelShader;
 
-	nvrhi::BufferHandle ConstantBuffer;
+		// Framebuffers
+		nvrhi::TextureHandle MainFramebufferColourImage;
+		nvrhi::TextureHandle MainFramebufferDepthImage;
+		nvrhi::FramebufferHandle MainFramebuffer;
 
-	nvrhi::BindingLayoutHandle BindingLayout;
-	nvrhi::BindingSetHandle BindingSet;
+		// Data
+		nvrhi::BufferHandle VertexBuffer;
+		nvrhi::BufferHandle IndexBuffer;
+
+		nvrhi::TextureHandle DiffuseTexture;
+		nvrhi::SamplerHandle DiffuseTextureSampler;
+
+		nvrhi::BufferHandle ConstantBuffer;
+
+		nvrhi::BindingLayoutHandle BindingLayout;
+		nvrhi::BindingSetHandle BindingSet;
+	}
 
 	// Render commands
 	nvrhi::CommandListHandle CommandList;
@@ -596,61 +632,87 @@ namespace Renderer
 		// ==========================================================================================================
 		// SHADER LOADING
 		// ==========================================================================================================
-		// Load the shaders from a SPIR-V binary that we'll produce with glslangValidator
-		ShaderBinary vertexShaderBinary, pixelShaderBinary;
-		if ( !Shader::LoadShaderBinary( "assets/shaders/default_main_vs.bin", vertexShaderBinary ) )
+
+		// Load the shaders from a SPIR-V binary that we'll produce with NVRHI-SC
+		const auto loadShaders = []( const char* vertexBinaryFile, const char* pixelBinaryFile, 
+			nvrhi::ShaderHandle& outVertexShader, nvrhi::ShaderHandle& outPixelShader )
 		{
-			std::cout << "Couldn't load shader 'assets/shaders/default_main_vs.bin'" << std::endl;
+			ShaderBinary vertexBinary, pixelBinary;
+
+			if ( !Shader::LoadShaderBinary( vertexBinaryFile, vertexBinary ) )
+			{
+				std::cout << "Couldn't load shader '" << vertexBinaryFile << "'" << std::endl;
+				return false;
+			}
+
+			if ( !Shader::LoadShaderBinary( pixelBinaryFile, pixelBinary ) )
+			{
+				std::cout << "Couldn't load shader '" << pixelBinaryFile << "'" << std::endl;
+				return false;
+			}
+			
+			std::cout << "Vertex shader size: " << vertexBinary.size() << std::endl
+				<< "Pixel shader size: " << pixelBinary.size() << std::endl;
+
+			nvrhi::ShaderDesc shaderDesc;
+			shaderDesc.shaderType = nvrhi::ShaderType::Vertex;
+			shaderDesc.debugName = vertexBinaryFile;
+			shaderDesc.entryName = "main_vs";
+
+			outVertexShader = Device->createShader( shaderDesc, vertexBinary.data(), vertexBinary.size() );
+			if ( !Check( outVertexShader, "Failed to create vertex shader" ) )
+			{
+				return false;
+			}
+
+			shaderDesc.shaderType = nvrhi::ShaderType::Pixel;
+			shaderDesc.debugName = pixelBinaryFile;
+			shaderDesc.entryName = "main_ps";
+
+			outPixelShader = Device->createShader( shaderDesc, pixelBinary.data(), pixelBinary.size() );
+			if ( !Check( outPixelShader, "Failed to create pixel shader" ) )
+			{
+				return false;
+			}
+
+			return true;
+		};
+
+		if ( !loadShaders( "assets/shaders/default_main_vs.bin", "assets/shaders/default_main_ps.bin", Scene::VertexShader, Scene::PixelShader ) )
+		{
+			std::cout << "Failed to load the scene shaders" << std::endl;
 			return false;
 		}
 
-		if ( !Shader::LoadShaderBinary( "assets/shaders/default_main_ps.bin", pixelShaderBinary ) )
+		if ( !loadShaders( "assets/shaders/screen_main_vs.bin", "assets/shaders/screen_main_ps.bin", ScreenQuad::VertexShader, ScreenQuad::PixelShader ) )
 		{
-			std::cout << "Couldn't load shader 'assets/shaders/default_main_ps.bin'" << std::endl;
-			return false;
-		}
-
-		std::cout << "Vertex shader size: " << vertexShaderBinary.size() << std::endl;
-		std::cout << "Pixel shader size: " << pixelShaderBinary.size() << std::endl;
-
-		if ( vertexShaderBinary.capacity() < 100U )
-		{
-			std::cout << "Vertex shader size looks wrong..." << std::endl;
-			return false;
-		}
-
-		nvrhi::ShaderDesc shaderDesc;
-		shaderDesc.shaderType = nvrhi::ShaderType::Vertex;
-		shaderDesc.debugName = "My vertex shader";
-		shaderDesc.entryName = "main_vs";
-
-		VertexShader = Device->createShader( shaderDesc, vertexShaderBinary.data(), vertexShaderBinary.size() );
-
-		if ( nullptr == VertexShader )
-		{
-			std::cout << "Failed to create vertex shader" << std::endl;
-			return false;
-		}
-
-		shaderDesc.shaderType = nvrhi::ShaderType::Pixel;
-		shaderDesc.debugName = "My pixel shader";
-		shaderDesc.entryName = "main_ps";
-
-		PixelShader = Device->createShader( shaderDesc, pixelShaderBinary.data(), pixelShaderBinary.size() );
-
-		if ( nullptr == PixelShader )
-		{
-			std::cout << "Failed to create pixel shader" << std::endl;
+			std::cout << "Failed to load the screen shaders" << std::endl;
 			return false;
 		}
 
 		// ==========================================================================================================
 		// GEOMETRY LOADING
+		// Set up vertex attributes, i.e. describe how our vertex data will be interpreted
 		// ==========================================================================================================
 		gltfModel.Init( "assets/splotch.glb" );
 
-		// Set up vertex attributes, i.e. describe how our vertex data will be interpreted
-		nvrhi::VertexAttributeDesc vertexAttributes[]
+		nvrhi::VertexAttributeDesc screenVertexAttributes[]
+		{
+			nvrhi::VertexAttributeDesc()
+			.setName( "POSITION" )
+			.setFormat( nvrhi::Format::RG32_FLOAT )
+			.setOffset( 0 )
+			.setElementStride( 4 * sizeof( float ) ),
+
+			nvrhi::VertexAttributeDesc()
+			.setName( "TEXCOORD" )
+			.setFormat( nvrhi::Format::RG32_FLOAT )
+			.setOffset( 2 * sizeof( float ) )
+			.setElementStride( 4 * sizeof( float) )
+		};
+		ScreenQuad::InputLayout = Device->createInputLayout( screenVertexAttributes, std::size( screenVertexAttributes ), ScreenQuad::VertexShader );
+
+		nvrhi::VertexAttributeDesc sceneVertexAttributes[]
 		{
 			nvrhi::VertexAttributeDesc()
 			.setName( "POSITION" )
@@ -676,90 +738,142 @@ namespace Renderer
 			.setOffset( sizeof( glm::vec3 ) + sizeof( glm::vec3 ) + sizeof( glm::vec2 ) )
 			.setElementStride( sizeof( Model::DrawVertex ) ),
 		};
-
-		InputLayout = Device->createInputLayout( vertexAttributes, std::size( vertexAttributes ), VertexShader );
+		Scene::InputLayout = Device->createInputLayout( sceneVertexAttributes, std::size( sceneVertexAttributes ), Scene::VertexShader );
 
 		// Vertex buffer stuff
 		nvrhi::BufferDesc bufferDesc;
 		bufferDesc.byteSize = gltfModel.mesh.VertexBytes();
-		bufferDesc.debugName = "My vertex buffer";
+		bufferDesc.debugName = "Scene vertex buffer";
 		bufferDesc.isVertexBuffer = true;
 		bufferDesc.initialState = nvrhi::ResourceStates::CopyDest;
+		Scene::VertexBuffer = Device->createBuffer( bufferDesc );
 
-		VertexBuffer = Device->createBuffer( bufferDesc );
-
-		if ( nullptr == VertexBuffer )
-		{
-			std::cout << "Could not create vertemx bumfer" << std::endl;
+		if ( !Check( Scene::VertexBuffer, "Failed to create Scene::VertexBuffer" ) )
 			return false;
-		}
+
+		bufferDesc.byteSize = Model::ScreenQuad::Vertices.size() * sizeof( float );
+		bufferDesc.debugName = "Screenquad vertex buffer";
+		ScreenQuad::VertexBuffer = Device->createBuffer( bufferDesc );
+
+		if ( !Check( ScreenQuad::VertexBuffer, "Failed to create ScreenQuad::VertexBuffer" ) )
+			return false;
 
 		// Index buffer stuff
 		bufferDesc.byteSize = gltfModel.mesh.surfaces[0].IndexBytes();
-		bufferDesc.debugName = "My index buffer";
+		bufferDesc.debugName = "Scene index buffer";
 		bufferDesc.isVertexBuffer = false;
 		bufferDesc.isIndexBuffer = true;
 		bufferDesc.initialState = nvrhi::ResourceStates::CopyDest;
+		Scene::IndexBuffer = Device->createBuffer( bufferDesc );
 
-		IndexBuffer = Device->createBuffer( bufferDesc );
-
-		if ( nullptr == IndexBuffer )
-		{
-			std::cout << "Could not create shmindecks bunber" << std::endl;
+		if ( !Check( Scene::IndexBuffer, "Failed to create Scene::IndexBuffer" ) )
 			return false;
-		}
+
+		bufferDesc.byteSize = Model::ScreenQuad::Indices.size() * sizeof( uint32_t );
+		bufferDesc.debugName = "Screenquad index buffer";
+		ScreenQuad::IndexBuffer = Device->createBuffer( bufferDesc );
+
+		if ( !Check( ScreenQuad::IndexBuffer, "Failed to create ScreenQuad::IndexBuffer" ) )
+			return false;
 
 		// ==========================================================================================================
 		// CONSTANT BUFFER CREATION
 		// ==========================================================================================================
 		bufferDesc = nvrhi::utils::CreateVolatileConstantBufferDesc( sizeof( ConstantBufferData ), "My constant buffer", 16U);
-		ConstantBuffer = Device->createBuffer( bufferDesc );
+		Scene::ConstantBuffer = Device->createBuffer( bufferDesc );
+
+		if ( !Check( Scene::ConstantBuffer, "Failed to create Scene::ConstantBuffer" ) )
+			return false;
 
 		// ==========================================================================================================
 		// TEXTURE CREATION
 		// ==========================================================================================================
 		TextureFile.Init( "assets/256floor.png" );
+
+		if ( !Check( TextureFile.data, "Failed to load texture 'assets/256floor.png'") )
+			return false;
 		
+		// Diffuse texture
 		auto& textureDesc = nvrhi::TextureDesc()
 			.setWidth( TextureFile.width )
 			.setHeight( TextureFile.height )
-			.setFormat( TextureFile.GetNvrhiFormat() );
+			.setFormat( TextureFile.GetNvrhiFormat() )
+			.setDebugName( "Main diffuse texture" );
 		
-		DiffuseTexture = Device->createTexture( textureDesc );
+		Scene::DiffuseTexture = Device->createTexture( textureDesc );
+
+		if ( !Check( Scene::DiffuseTexture, "Failed to create Scene::DiffuseTexture" ) )
+			return false;
 		
+		// Sampler
 		auto& textureSampler = nvrhi::SamplerDesc()
 			.setAllFilters( true )
 			.setMaxAnisotropy( 16.0f )
 			.setAllAddressModes( nvrhi::SamplerAddressMode::Wrap );
 		
-		DiffuseTextureSampler = Device->createSampler( textureSampler );
+		Scene::DiffuseTextureSampler = Device->createSampler( textureSampler );
 
-		auto& colourAttachmentDesc = nvrhi::TextureDesc()
+		if ( !Check( Scene::DiffuseTextureSampler, "Failed to create Scene::DiffuseTextureSampler" ) )
+			return false;
+
+		using RStates = nvrhi::ResourceStates;
+
+		const RStates ColourBufferStates = RStates::RenderTarget;
+		const RStates DepthBufferStates = RStates::DepthWrite;
+
+		// Colour and depth attachment for the framebuffer
+		auto colourAttachmentDesc = nvrhi::TextureDesc()
 			.setWidth( dcp.backBufferWidth )
 			.setHeight( dcp.backBufferHeight )
 			.setFormat( dcp.swapChainFormat )
 			.setDimension( nvrhi::TextureDimension::Texture2D )
-			.setInitialState( nvrhi::ResourceStates::Present | nvrhi::ResourceStates::RenderTarget )
+			.setKeepInitialState( true )
+			.setInitialState( ColourBufferStates )
 			.setIsRenderTarget( true )
 			.setDebugName( "Colour attachment image" );
 
-		auto& depthAttachmentDesc = nvrhi::TextureDesc()
+		auto depthAttachmentDesc = nvrhi::TextureDesc()
 			.setWidth( dcp.backBufferWidth )
 			.setHeight( dcp.backBufferHeight )
-			.setFormat( nvrhi::Format::D32 ) // 32-bit depth buffer, no stencil
+			.setFormat( nvrhi::Format::D32 )
+			.setIsTypeless( true )
 			.setDimension( nvrhi::TextureDimension::Texture2D )
-			.setInitialState( nvrhi::ResourceStates::Present | nvrhi::ResourceStates::RenderTarget )
+			.setKeepInitialState( true )
+			.setInitialState( DepthBufferStates )
 			.setIsRenderTarget( true )
 			.setDebugName( "Depth attachment image" );
 
-		MainFramebufferColourImage = Device->createTexture( colourAttachmentDesc );
-		MainFramebufferDepthImage = Device->createTexture( depthAttachmentDesc );
+		Scene::MainFramebufferColourImage = Device->createTexture( colourAttachmentDesc );
+		Scene::MainFramebufferDepthImage = Device->createTexture( depthAttachmentDesc );
 
-		auto& mainFramebufferDesc = nvrhi::FramebufferDesc()
-			.addColorAttachment( MainFramebufferColourImage )
-			.setDepthAttachment( MainFramebufferDepthImage );
+		if ( !Check( Scene::MainFramebufferColourImage, "Failed to create Scene::MainFramebufferColourImage" ) )
+			return false;
+		if ( !Check( Scene::MainFramebufferDepthImage, "Failed to create Scene::MainFramebufferDepthImage" ) )
+			return false;
 
-		MainFramebuffer = Device->createFramebuffer( mainFramebufferDesc );
+		auto mainFramebufferDesc = nvrhi::FramebufferDesc()
+			.addColorAttachment( Scene::MainFramebufferColourImage )
+			.setDepthAttachment( Scene::MainFramebufferDepthImage );
+
+		Scene::MainFramebuffer = Device->createFramebuffer( mainFramebufferDesc );
+
+		if ( !Check( Scene::MainFramebuffer, "Failed to create Scene::MainFramebuffer" ) )
+			return false;
+
+		const auto& framebufferInfo = Scene::MainFramebuffer->getFramebufferInfo();
+		
+		const auto printFramebufferInfo = []( const nvrhi::FramebufferInfo& fbInfo, const char* name )
+		{
+			std::cout << "Framebuffer: " << name << std::endl
+				<< "  * Size:           " << fbInfo.width << "x" << fbInfo.height << std::endl
+				<< "  * Sample count:   " << fbInfo.sampleCount << std::endl
+				<< "  * Sample quality: " << fbInfo.sampleQuality << std::endl
+				<< "  * Colour format:  " << nvrhi::utils::FormatToString( fbInfo.colorFormats[0] ) << std::endl
+				<< "  * Depth format:   " << nvrhi::utils::FormatToString( fbInfo.depthFormat ) << std::endl;
+		};
+
+		printFramebufferInfo( framebufferInfo, "Main framebuffer" );
+		printFramebufferInfo( DeviceManager->GetCurrentFramebuffer()->getFramebufferInfo(), "Backbuffer" );
 
 		// ==========================================================================================================
 		// DATA TRANSFER
@@ -767,19 +881,39 @@ namespace Renderer
 		// Commands to copy this stuff to the GPU
 		TransferList->open();
 
-		TransferList->beginTrackingBufferState( VertexBuffer, nvrhi::ResourceStates::CopyDest );
-		TransferList->writeBuffer( VertexBuffer, gltfModel.mesh.GetData(), gltfModel.mesh.VertexBytes() );
-		TransferList->setPermanentBufferState( VertexBuffer, nvrhi::ResourceStates::VertexBuffer );
+		// Screenquad resources
+		TransferList->beginTrackingBufferState( ScreenQuad::VertexBuffer, RStates::CopyDest );
+		TransferList->writeBuffer( ScreenQuad::VertexBuffer, Model::ScreenQuad::Vertices.data(), Model::ScreenQuad::Vertices.size() * sizeof( float ) );
+		TransferList->setPermanentBufferState( ScreenQuad::VertexBuffer, RStates::VertexBuffer );
 
-		TransferList->beginTrackingBufferState( IndexBuffer, nvrhi::ResourceStates::CopyDest );
-		TransferList->writeBuffer( IndexBuffer, gltfModel.mesh.surfaces[0].GetData(), gltfModel.mesh.surfaces[0].IndexBytes() );
-		TransferList->setPermanentBufferState( IndexBuffer, nvrhi::ResourceStates::IndexBuffer );
+		TransferList->beginTrackingBufferState( ScreenQuad::IndexBuffer, RStates::CopyDest );
+		TransferList->writeBuffer( ScreenQuad::IndexBuffer, Model::ScreenQuad::Indices.data(), Model::ScreenQuad::Indices.size() * sizeof( uint32_t ) );
+		TransferList->setPermanentBufferState( ScreenQuad::IndexBuffer, RStates::IndexBuffer );
+
+		// Scene resources
+		TransferList->beginTrackingBufferState( Scene::VertexBuffer, RStates::CopyDest );
+		TransferList->writeBuffer( Scene::VertexBuffer, gltfModel.mesh.GetData(), gltfModel.mesh.VertexBytes() );
+		TransferList->setPermanentBufferState( Scene::VertexBuffer, RStates::VertexBuffer );
+
+		TransferList->beginTrackingBufferState( Scene::IndexBuffer, RStates::CopyDest );
+		TransferList->writeBuffer( Scene::IndexBuffer, gltfModel.mesh.surfaces[0].GetData(), gltfModel.mesh.surfaces[0].IndexBytes() );
+		TransferList->setPermanentBufferState( Scene::IndexBuffer, RStates::IndexBuffer );
 
 		// Constant buffers are written to at runtime
 
-		TransferList->beginTrackingTextureState( DiffuseTexture, nvrhi::AllSubresources, nvrhi::ResourceStates::Common );
-		TransferList->writeTexture( DiffuseTexture, 0, 0, TextureFile.data, TextureFile.GetNvrhiRowBytes() );
-		TransferList->setPermanentTextureState( DiffuseTexture, nvrhi::ResourceStates::ShaderResource );
+		// Diffuse texture gets written to
+		TransferList->beginTrackingTextureState( Scene::DiffuseTexture, nvrhi::AllSubresources, RStates::Common );
+		TransferList->writeTexture( Scene::DiffuseTexture, 0, 0, TextureFile.data, TextureFile.GetNvrhiRowBytes() );
+		TransferList->setPermanentTextureState( Scene::DiffuseTexture, RStates::ShaderResource );
+
+		// Framebuffer attachments I think we just gotta set tracking and clear? Not entirely sure
+		//TransferList->beginTrackingTextureState( Scene::MainFramebufferColourImage, nvrhi::AllSubresources, ColourBufferStates );
+		//TransferList->clearTextureFloat( Scene::MainFramebufferColourImage, nvrhi::AllSubresources, nvrhi::Color( 1.0f, 0.0f, 0.0f, 1.0f ) );
+		//TransferList->setPermanentTextureState( Scene::MainFramebufferColourImage, ColourBufferStates | RStates::RenderTarget );
+
+		//TransferList->beginTrackingTextureState( Scene::MainFramebufferDepthImage, nvrhi::AllSubresources, DepthBufferStates );
+		//TransferList->clearDepthStencilTexture( Scene::MainFramebufferDepthImage, nvrhi::AllSubresources, true, 0.0f, false, 0U );
+		//TransferList->setPermanentTextureState( Scene::MainFramebufferDepthImage, DepthBufferStates | RStates::RenderTarget );
 
 		TransferList->close();
 
@@ -792,34 +926,105 @@ namespace Renderer
 		nvrhi::BindingSetDesc setDesc;
 		setDesc.bindings =
 		{
-			nvrhi::BindingSetItem::ConstantBuffer( 0, ConstantBuffer ),
-			nvrhi::BindingSetItem::Texture_SRV( 0, DiffuseTexture ),
-			nvrhi::BindingSetItem::Sampler( 0, DiffuseTextureSampler )
+			nvrhi::BindingSetItem::ConstantBuffer( 0, Scene::ConstantBuffer ),
+			nvrhi::BindingSetItem::Texture_SRV( 0, Scene::DiffuseTexture ),
+			nvrhi::BindingSetItem::Sampler( 0, Scene::DiffuseTextureSampler )
 		};
-		nvrhi::utils::CreateBindingSetAndLayout( Device, nvrhi::ShaderType::All, 0, setDesc, BindingLayout, BindingSet );
+		nvrhi::utils::CreateBindingSetAndLayout( Device, nvrhi::ShaderType::All, 0, setDesc, Scene::BindingLayout, Scene::BindingSet );
+
+		// For the screen quad shader, we only need to bind the framebuffer's colour attachment
+		setDesc.bindings =
+		{
+			nvrhi::BindingSetItem::Texture_SRV( 0, Scene::MainFramebufferColourImage ),
+			nvrhi::BindingSetItem::Sampler( 0, Scene::DiffuseTextureSampler )
+		};
+		nvrhi::utils::CreateBindingSetAndLayout( Device, nvrhi::ShaderType::All, 0, setDesc, ScreenQuad::BindingLayout, ScreenQuad::BindingSet );
 
 		// ==========================================================================================================
 		// PIPELINE CREATION
 		// ==========================================================================================================
+
+		// Screen pipeline
 		nvrhi::GraphicsPipelineDesc pipelineDesc;
-		pipelineDesc.VS = VertexShader;
-		pipelineDesc.PS = PixelShader;
-		pipelineDesc.inputLayout = InputLayout;
+		pipelineDesc.VS = ScreenQuad::VertexShader;
+		pipelineDesc.PS = ScreenQuad::PixelShader;
+		pipelineDesc.inputLayout = ScreenQuad::InputLayout;
 		pipelineDesc.primType = nvrhi::PrimitiveType::TriangleList;
 		pipelineDesc.renderState.depthStencilState.depthTestEnable = false;
 		pipelineDesc.renderState.depthStencilState.depthWriteEnable = false;
 		pipelineDesc.renderState.rasterState.setCullNone();
-		pipelineDesc.addBindingLayout( BindingLayout );
+		pipelineDesc.bindingLayouts = { ScreenQuad::BindingLayout };
 
-		Pipeline = Device->createGraphicsPipeline( pipelineDesc, DeviceManager->GetCurrentFramebuffer() );
+		ScreenQuad::Pipeline = Device->createGraphicsPipeline( pipelineDesc, DeviceManager->GetCurrentFramebuffer() );
 
-		if ( nullptr == Pipeline )
-		{
-			std::cout << "Could not create pipeline" << std::endl;
+		if ( !Check( ScreenQuad::Pipeline, "Could not create ScreenQuad::Pipeline" ) )
 			return false;
-		}
+
+		// Scene pipeline
+		pipelineDesc.VS = Scene::VertexShader;
+		pipelineDesc.PS = Scene::PixelShader;
+		pipelineDesc.inputLayout = Scene::InputLayout;
+		pipelineDesc.renderState.rasterState;
+		pipelineDesc.renderState.depthStencilState.depthTestEnable = true;
+		pipelineDesc.renderState.depthStencilState.depthWriteEnable = true;
+		pipelineDesc.renderState.depthStencilState.depthFunc = nvrhi::ComparisonFunc::GreaterOrEqual;
+		pipelineDesc.bindingLayouts = { Scene::BindingLayout };
+
+		Scene::Pipeline = Device->createGraphicsPipeline( pipelineDesc, Scene::MainFramebuffer );
+
+		if ( !Check( Scene::Pipeline, "Could not create Scene::Pipeline" ) )
+			return false;
 
 		return true;
+	}
+
+	void RenderScreenQuad()
+	{
+		// Clear the screen with black
+		nvrhi::utils::ClearColorAttachment( CommandList, DeviceManager->GetCurrentFramebuffer(), 0, nvrhi::Color{ 0.0f, 0.0f, 0.0f, 1.0f } );
+		
+		// Set up the current graphics state
+		auto graphicsState = nvrhi::GraphicsState()
+			.addBindingSet( ScreenQuad::BindingSet )
+			.addVertexBuffer( { ScreenQuad::VertexBuffer, 0, 0 } )
+			.setIndexBuffer( { ScreenQuad::IndexBuffer, nvrhi::Format::R32_UINT, 0 } )
+			.setPipeline( ScreenQuad::Pipeline )
+			.setFramebuffer( DeviceManager->GetCurrentFramebuffer() );
+		// Without this, stuff won't render as the viewport will be 0,0
+		graphicsState.viewport.addViewportAndScissorRect( nvrhi::Viewport( 1600.0f, 900.0f ) );
+		CommandList->setGraphicsState( graphicsState );
+
+		// Draw the thing
+		auto& args = nvrhi::DrawArguments()
+			.setVertexCount( Model::ScreenQuad::Indices.size() ); // Vertex count is actually index count in this case
+		CommandList->drawIndexed( args );		
+	}
+
+	void RenderSceneIntoFramebuffer()
+	{
+		// Let's tell the GPU it should fill the main buffer with some dark greenish blue
+		CommandList->clearTextureFloat( Scene::MainFramebufferColourImage, nvrhi::AllSubresources, nvrhi::Color{ 0.01f, 0.05f, 0.05f, 1.0f } );
+		CommandList->clearDepthStencilTexture( Scene::MainFramebufferDepthImage, nvrhi::AllSubresources, true, 0.0f, false, 0U );
+
+		// Update view & projection matrices
+		TransformData.time += 0.016f;
+		CommandList->writeBuffer( Scene::ConstantBuffer, &TransformData, sizeof( TransformData ) );
+
+		// Set up the current graphics state
+		auto graphicsState = nvrhi::GraphicsState()
+			.addBindingSet( Scene::BindingSet )
+			.addVertexBuffer( { Scene::VertexBuffer, 0, 0 } )
+			.setIndexBuffer( { Scene::IndexBuffer, nvrhi::Format::R32_UINT, 0 } )
+			.setPipeline( Scene::Pipeline )
+			.setFramebuffer( Scene::MainFramebuffer );
+		// Without this, stuff won't render as the viewport will be 0,0
+		graphicsState.viewport.addViewportAndScissorRect( nvrhi::Viewport( 1600.0f, 900.0f ) );
+		CommandList->setGraphicsState( graphicsState );
+
+		// Draw the thing
+		auto& args = nvrhi::DrawArguments()
+			.setVertexCount( gltfModel.mesh.surfaces[0].vertexIndices.size() ); // Vertex count is actually index count in this case
+		CommandList->drawIndexed( args );
 	}
 
 	void Render()
@@ -831,34 +1036,14 @@ namespace Renderer
 		// Open the command buffa
 		CommandList->open();
 
-		// Let's tell the GPU it should fill the framebuffer with some dark greenish blue
-		nvrhi::utils::ClearColorAttachment( CommandList, DeviceManager->GetCurrentFramebuffer(), 0, nvrhi::Color{0.01f, 0.05f, 0.05f, 1.0f});
-		//nvrhi::utils::ClearDepthStencilAttachment( CommandList, MainFramebuffer, 0.0f, 0U );
+		// Render the scene with projection'n'everything into a framebuffer
+		RenderSceneIntoFramebuffer();
 
-		//CommandList->clearTextureFloat( MainFramebufferColourImage, nvrhi::AllSubresources, nvrhi::Color{ 0.01f, 0.05f, 0.05f, 1.0f } );
-		//CommandList->clearDepthStencilTexture( MainFramebufferDepthImage, nvrhi::AllSubresources, true, 0.0f, false, 0U );
-
-		// Update view & projection matrices
-		TransformData.time += 0.016f;
-		CommandList->writeBuffer( ConstantBuffer, &TransformData, sizeof( TransformData ) );
-
-		// Set up the current graphics state
-		auto& graphicsState = nvrhi::GraphicsState()
-			//.addBindingSet( BindingSet_Vertex )
-			.addBindingSet( BindingSet )
-			.addVertexBuffer( { VertexBuffer, 0, 0 } )
-			.setIndexBuffer( { IndexBuffer, nvrhi::Format::R32_UINT, 0 } )
-			.setPipeline( Pipeline )
-			.setFramebuffer( DeviceManager->GetCurrentFramebuffer() );
-		// Without this, stuff won't render as the viewport will be 0,0
-		graphicsState.viewport.addViewportAndScissorRect( nvrhi::Viewport( 1600.0f, 900.0f ) );
-		CommandList->setGraphicsState( graphicsState );
-
-		// Draw the thing
-		auto& args = nvrhi::DrawArguments()
-			.setVertexCount( gltfModel.mesh.surfaces[0].vertexIndices.size() ); // Vertex count is actually index count in this case
-
-		CommandList->drawIndexed( args );
+		// Render said framebuffer as a quad on the screen, because
+		// backbuffer does not have a depth attachment
+		// This is actually one way to implement framebuffer blitting
+		// Should make it more generic
+		RenderScreenQuad();
 
 		// We've recorded all the commands we wanna send to the GPU, we're done here
 		CommandList->close();
@@ -880,24 +1065,36 @@ namespace Renderer
 		CommandList = nullptr;
 		TransferList = nullptr;
 
-		VertexBuffer = nullptr;
-		IndexBuffer = nullptr;
-		DiffuseTexture = nullptr;
-		DiffuseTextureSampler = nullptr;
-		ConstantBuffer = nullptr;
+		ScreenQuad::VertexBuffer = nullptr;
+		ScreenQuad::IndexBuffer = nullptr;
 
-		MainFramebuffer = nullptr;
-		MainFramebufferColourImage = nullptr;
-		MainFramebufferDepthImage = nullptr;
+		ScreenQuad::VertexShader = nullptr;
+		ScreenQuad::PixelShader = nullptr;
 
-		VertexShader = nullptr;
-		PixelShader = nullptr;
+		ScreenQuad::BindingLayout = nullptr;
+		ScreenQuad::BindingSet = nullptr;
+
+		ScreenQuad::InputLayout = nullptr;
+		ScreenQuad::Pipeline = nullptr;
+
+		Scene::VertexBuffer = nullptr;
+		Scene::IndexBuffer = nullptr;
+		Scene::DiffuseTexture = nullptr;
+		Scene::DiffuseTextureSampler = nullptr;
+		Scene::ConstantBuffer = nullptr;
+
+		Scene::MainFramebuffer = nullptr;
+		Scene::MainFramebufferColourImage = nullptr;
+		Scene::MainFramebufferDepthImage = nullptr;
+
+		Scene::VertexShader = nullptr;
+		Scene::PixelShader = nullptr;
 		
-		BindingLayout = nullptr;
-		BindingSet = nullptr;
+		Scene::BindingLayout = nullptr;
+		Scene::BindingSet = nullptr;
 
-		InputLayout = nullptr;
-		Pipeline = nullptr;
+		Scene::InputLayout = nullptr;
+		Scene::Pipeline = nullptr;
 
 		Device->waitForIdle();
 

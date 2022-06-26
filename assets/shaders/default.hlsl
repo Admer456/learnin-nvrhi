@@ -29,14 +29,6 @@ void main_vs(
 	pos.z += sin( time + pos.x * waveSizeInverse ) * 0.016;
 	pos.z += sin( time + pos.y * waveSizeInverse ) * 0.016;
 
-	for( int i = 0; i < 16; i++ )
-	{
-		const float timeMultiplier = 4.0 + (i * 0.25);
-		const float intensity = 0.05 / timeMultiplier;
-
-		
-	}
-	// On-screen coordinates
 	float4 transformedPos = mul( float4( pos, 1.0 ), mul( viewMatrix, projectionMatrix ) );
 
 	outPosition = transformedPos;

@@ -119,6 +119,8 @@ install( FILES
 
 ## Copy over shaders too
 install( FILES 
-	${THE_ROOT}/assets/shaders/default_main_ps.bin 
-	${THE_ROOT}/assets/shaders/default_main_vs.bin 
+	${THE_ROOT}/assets/shaders/default_main_ps.bin
+	${THE_ROOT}/assets/shaders/default_main_vs.bin
+	${THE_ROOT}/assets/shaders/screen_main_vs.bin
+	${THE_ROOT}/assets/shaders/screen_main_ps.bin
 	DESTINATION ${THE_ROOT}/bin/assets/shaders/ )
