@@ -7,11 +7,12 @@ void main_vs(
 	out float2 outTexcoords : TEXCOORD
 )
 {
-	outPosition = float4( inPosition * 0.5, 0.0, 1.0 );
+	outPosition = float4( inPosition, 0.0, 1.0 );
 	outTexcoords = inTexcoords;
 }
 
 Texture2D screenTexture : register(t0);
+Texture2D depthTexture : register(t1);
 SamplerState screenSampler : register(s0);
 
 void main_ps(
@@ -22,5 +23,10 @@ void main_ps(
 )
 {
 	outColour = screenTexture.Sample( screenSampler, inTexcoords );
-	outColour.xy += inTexcoords * 0.2;
+
+	const float depth = depthTexture.Sample( screenSampler, inTexcoords ).x;
+	const float distance = clamp( pow( depth, 200.0 ), 0.0, 1.0 );
+	
+	outColour.rgb = (outColour.rgb * 2.5) * (1.0 - distance) + float3( 0.54, 0.5, 0.62 ) * distance; 
+	outColour.a = 1.0;
 }

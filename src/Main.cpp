@@ -157,13 +157,19 @@ namespace Model
 				vertex.vertexTextureCoords = *(reinterpret_cast<const glm::vec2*>(vertexTexcoordBuffer.data) + i);
 				vertex.vertexTextureCoords *= 4.0f;
 				// Vertex colour is RGBA uint16_t
-				glm::u16vec4 vc = *(reinterpret_cast<const glm::u16vec4*>(vertexColourBuffer.data) + i);
-				vertex.vertexColour.x = vc.x / 65536.0f;
-				vertex.vertexColour.y = vc.y / 65536.0f;
-				vertex.vertexColour.z = vc.z / 65536.0f;
-				vertex.vertexColour.w = vc.w / 65536.0f;
-				//vertex.vertexColour = { 1.0f, 1.0f, 1.0f, 1.0f };
-				
+				if ( nullptr != vertexColourBuffer.data )
+				{
+					glm::u16vec4 vc = *(reinterpret_cast<const glm::u16vec4*>(vertexColourBuffer.data) + i);
+					vertex.vertexColour.x = vc.x / 65536.0f;
+					vertex.vertexColour.y = vc.y / 65536.0f;
+					vertex.vertexColour.z = vc.z / 65536.0f;
+					vertex.vertexColour.w = vc.w / 65536.0f;
+				}
+				else
+				{
+					vertex.vertexColour = { 1.0f, 1.0f, 1.0f, 1.0f };
+				}
+
 				mesh.vertexData.push_back( vertex );
 			}
 
@@ -578,12 +584,14 @@ namespace Renderer
 		float time;
 	};
 
+	constexpr float MaxViewDistance = 100.0f;
+
 	Model::GltfModel gltfModel;
 	Texture::TextureData TextureFile;
 	ConstantBufferData TransformData
 	{
-		glm::lookAt( glm::vec3( -0.8f, -0.5f, 0.333f ), glm::vec3( 0.0f, 0.0f, -0.15f ), glm::vec3( 0.0f, 0.0f, 1.0f ) ),
-		glm::perspective( glm::radians( 105.0f ), 16.0f / 9.0f, 0.01f, 100.0f ),
+		glm::lookAt( glm::vec3( -1.8f, -1.5f, 1.333f ), glm::vec3( 0.0f, 0.0f, 1.0f ), glm::vec3( 0.0f, 0.0f, 1.0f ) ),
+		glm::perspectiveZO( glm::radians( 105.0f ), 16.0f / 9.0f, 0.01f, MaxViewDistance ),
 		0.0f
 	};
 
@@ -694,7 +702,7 @@ namespace Renderer
 		// GEOMETRY LOADING
 		// Set up vertex attributes, i.e. describe how our vertex data will be interpreted
 		// ==========================================================================================================
-		gltfModel.Init( "assets/splotch.glb" );
+		gltfModel.Init( "assets/TestEnvironment.glb" );
 
 		nvrhi::VertexAttributeDesc screenVertexAttributes[]
 		{
@@ -779,7 +787,7 @@ namespace Renderer
 		// ==========================================================================================================
 		// CONSTANT BUFFER CREATION
 		// ==========================================================================================================
-		bufferDesc = nvrhi::utils::CreateVolatileConstantBufferDesc( sizeof( ConstantBufferData ), "My constant buffer", 16U);
+		bufferDesc = nvrhi::utils::CreateVolatileConstantBufferDesc( sizeof( ConstantBufferData ), "My constant buffer", 16U );
 		Scene::ConstantBuffer = Device->createBuffer( bufferDesc );
 
 		if ( !Check( Scene::ConstantBuffer, "Failed to create Scene::ConstantBuffer" ) )
@@ -819,7 +827,7 @@ namespace Renderer
 		using RStates = nvrhi::ResourceStates;
 
 		const RStates ColourBufferStates = RStates::RenderTarget;
-		const RStates DepthBufferStates = RStates::DepthWrite;
+		const RStates DepthBufferStates = RStates::DepthWrite | RStates::DepthRead;
 
 		// Colour and depth attachment for the framebuffer
 		auto colourAttachmentDesc = nvrhi::TextureDesc()
@@ -936,6 +944,7 @@ namespace Renderer
 		setDesc.bindings =
 		{
 			nvrhi::BindingSetItem::Texture_SRV( 0, Scene::MainFramebufferColourImage ),
+			nvrhi::BindingSetItem::Texture_SRV( 1, Scene::MainFramebufferDepthImage ),
 			nvrhi::BindingSetItem::Sampler( 0, Scene::DiffuseTextureSampler )
 		};
 		nvrhi::utils::CreateBindingSetAndLayout( Device, nvrhi::ShaderType::All, 0, setDesc, ScreenQuad::BindingLayout, ScreenQuad::BindingSet );
@@ -967,7 +976,7 @@ namespace Renderer
 		pipelineDesc.renderState.rasterState;
 		pipelineDesc.renderState.depthStencilState.depthTestEnable = true;
 		pipelineDesc.renderState.depthStencilState.depthWriteEnable = true;
-		pipelineDesc.renderState.depthStencilState.depthFunc = nvrhi::ComparisonFunc::GreaterOrEqual;
+		pipelineDesc.renderState.depthStencilState.depthFunc = nvrhi::ComparisonFunc::Less;
 		pipelineDesc.bindingLayouts = { Scene::BindingLayout };
 
 		Scene::Pipeline = Device->createGraphicsPipeline( pipelineDesc, Scene::MainFramebuffer );
@@ -1004,7 +1013,7 @@ namespace Renderer
 	{
 		// Let's tell the GPU it should fill the main buffer with some dark greenish blue
 		CommandList->clearTextureFloat( Scene::MainFramebufferColourImage, nvrhi::AllSubresources, nvrhi::Color{ 0.01f, 0.05f, 0.05f, 1.0f } );
-		CommandList->clearDepthStencilTexture( Scene::MainFramebufferDepthImage, nvrhi::AllSubresources, true, 0.0f, false, 0U );
+		CommandList->clearDepthStencilTexture( Scene::MainFramebufferDepthImage, nvrhi::AllSubresources, true, 1.0f, false, 0U );
 
 		// Update view & projection matrices
 		TransformData.time += 0.016f;
