@@ -1,11 +1,26 @@
 
 #pragma pack_matrix(row_major)
 
-cbuffer CB : register(b0)
+#ifdef SPIRV
+#define VK_PUSH_CONSTANT [[vk::push_constant]]
+#define VK_BINDING(reg,dset) [[vk::binding(reg,dset)]]
+#define VK_DESCRIPTOR_SET(dset) ,space##dset
+#else
+#define VK_PUSH_CONSTANT
+#define VK_BINDING(reg,dset) 
+#define VK_DESCRIPTOR_SET(dset)
+#endif
+
+cbuffer GlobalBuffer : register(b0)
 {
 	float4x4 viewMatrix;
 	float4x4 projectionMatrix;
 	float time;
+}
+
+cbuffer RenderSurfaceBuffer : register(b1)
+{
+	float4x4 entityMatrix;
 }
 
 void main_vs(
@@ -20,11 +35,10 @@ void main_vs(
 	out float3 outColour : COLOR
 )
 {
-	// Wavy little things
-	const float waveSizeInverse = 11.0;
-	float3 pos = inPosition;
+	float4x4 finalMatrix = mul( entityMatrix, mul( viewMatrix, projectionMatrix ) );
+	float4 transformedPos = mul( float4( inPosition, 1.0 ), finalMatrix );
 
-	float4 transformedPos = mul( float4( pos, 1.0 ), mul( viewMatrix, projectionMatrix ) );
+	transformedPos = mul( float4( inPosition, 1.0 ), mul( viewMatrix, projectionMatrix ) );
 
 	outPosition = transformedPos;
 	outTexcoords = inTexcoords;
@@ -32,8 +46,8 @@ void main_vs(
 	outNormal = inNormal;
 }
 
-Texture2D diffuseTexture : register(t0);
 SamplerState diffuseSampler : register(s0);
+Texture2D diffuseTexture : register(t0 VK_DESCRIPTOR_SET(1));
 
 float HalfLambert( float3 normal, float3 lightDir )
 {
@@ -49,6 +63,7 @@ void main_ps(
 	out float4 outColour : SV_TARGET0
 )
 {
+	outColour.rgb = float3( 1.0, 1.0, 1.0 );
 	outColour.rgb = diffuseTexture.Sample( diffuseSampler, inTexcoords ).rgb;// * float3( inTexcoords, 1.0 );
 	outColour.rgb *= HalfLambert( inNormal, float3( 20.0, 40.0, 60.0 ) );
 	outColour.a = 1.0;
