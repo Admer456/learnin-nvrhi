@@ -27,6 +27,6 @@ void main_ps(
 	const float depth = depthTexture.Sample( screenSampler, inTexcoords ).x;
 	const float distance = clamp( pow( depth, 200.0 ), 0.0, 1.0 );
 	
-	//outColour.rgb = (outColour.rgb * 2.5) * (1.0 - distance) + float3( 0.54, 0.5, 0.62 ) * distance; 
+	outColour.rgb = outColour.rgb * (1.0 - distance) + float3( 0.35, 0.37, 0.39 ) * distance; 
 	outColour.a = 1.0;
 }
