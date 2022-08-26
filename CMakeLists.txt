@@ -52,11 +52,15 @@ find_package( Vulkan REQUIRED )
 
 ## The sources
 set( THE_SOURCES
+	src/Common.hpp
 	src/DeviceManager.cpp
 	src/DeviceManager.hpp
 	src/DeviceManagerVK.cpp
 	src/Main.cpp
-	src/vku.hpp )
+	src/Model.cpp
+	src/Texture.cpp 
+	src/Shader.cpp
+	src/System.cpp )
 
 ## Folder organisation
 source_group( TREE ${THE_ROOT} FILES ${THE_SOURCES} )
