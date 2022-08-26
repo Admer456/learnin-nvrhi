@@ -114,6 +114,7 @@ if( WIN32 )
 endif()
 
 install( FILES 
+	${THE_ROOT}/assets/default.png
 	${THE_ROOT}/assets/MossPatch.glb
 	${THE_ROOT}/assets/splotch.glb
 	${THE_ROOT}/assets/pentagon.glb
