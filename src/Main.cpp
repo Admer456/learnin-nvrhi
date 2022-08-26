@@ -14,6 +14,7 @@
 #include <nvrhi/validation.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtx/euler_angles.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "gltf.h"
@@ -60,17 +61,29 @@ namespace Texture
 				".bmp", ".jpg", ".jpeg", ".tga", ".png"
 			};
 			
-			auto path = std::filesystem::path( fileName );
-			path = path.parent_path() / path.stem();
+			data = stbi_load( fileName, &x, &y, &comps, 4 );
 
-			std::string pathStr = path.string();
-
-			for ( const auto& imageType : ImageTypes )
+			if ( nullptr == data )
 			{
-				std::string imagePath = pathStr + imageType;
-				if ( data = stbi_load( imagePath.c_str(), &x, &y, &comps, 4 ) )
+				auto path = std::filesystem::path( fileName );
+				if ( path.has_extension() )
 				{
-					break;
+					path = path.parent_path()/path.stem();
+				}
+				else
+				{
+					path = path.parent_path()/path.filename();
+				}
+
+				std::string pathStr = path.string();
+
+				for ( const auto& imageType : ImageTypes )
+				{
+					std::string imagePath = pathStr + imageType;
+					if ( data = stbi_load( imagePath.c_str(), &x, &y, &comps, 4 ) )
+					{
+						break;
+					}
 				}
 			}
 
@@ -515,13 +528,13 @@ namespace Model
 		bufferDesc.initialState = nvrhi::ResourceStates::CopyDest;
 		auto bufferObject = Renderer::Device->createBuffer( bufferDesc );
 
-		Renderer::CommandList->open();
-		Renderer::CommandList->beginTrackingBufferState( bufferObject, nvrhi::ResourceStates::CopyDest );
-		Renderer::CommandList->writeBuffer( bufferObject, data.data(), bufferDesc.byteSize );
-		Renderer::CommandList->setPermanentBufferState( bufferObject, isVertexBuffer ? nvrhi::ResourceStates::VertexBuffer : nvrhi::ResourceStates::IndexBuffer );
-		Renderer::CommandList->close();
+		::Renderer::CommandList->open();
+		::Renderer::CommandList->beginTrackingBufferState( bufferObject, nvrhi::ResourceStates::CopyDest );
+		::Renderer::CommandList->writeBuffer( bufferObject, data.data(), bufferDesc.byteSize );
+		::Renderer::CommandList->setPermanentBufferState( bufferObject, isVertexBuffer ? nvrhi::ResourceStates::VertexBuffer : nvrhi::ResourceStates::IndexBuffer );
+		::Renderer::CommandList->close();
 
-		Renderer::Device->executeCommandList( Renderer::CommandList );
+		Renderer::Device->executeCommandList( ::Renderer::CommandList );
 
 		return bufferObject;
 	}
@@ -538,30 +551,36 @@ namespace Model
 		RenderModel& rm = RenderModels.back();
 		rm.name = fileName;
 
-		// Ideally this would be some sorta loop that goes thru all surfaces, but yeah
-		rm.surfaces.push_back( {} );
-		RenderSurface& rs = rm.surfaces.back();
-		rs.textureObjectHandle = Texture::FindOrCreateMaterial( modelFile.mesh.surfaces[0].materialName.c_str() );
-		//rs.textureObjectHandle = Texture::FindOrCreateMaterial( "assets/256floor.png" );
-		rs.vertexBuffer = CreateBufferWithData( modelFile.mesh.surfaces[0].vertexData, true, fileName);
-		rs.indexBuffer = CreateBufferWithData( modelFile.mesh.surfaces[0].vertexIndices, false, fileName );
-		rs.numIndices = modelFile.mesh.surfaces[0].vertexIndices.size();
-		rs.numVertices = modelFile.mesh.surfaces[0].vertexData.size();
-
-		// Default case ekek
-		if ( rs.textureObjectHandle == -1 )
+		for ( const auto& surface : modelFile.mesh.surfaces )
 		{
-			std::cout << "Cannot find texture: " << modelFile.mesh.surfaces[0].materialName << std::endl;
-			rs.textureObjectHandle = 0;
+			rm.surfaces.push_back( {} );
+			RenderSurface& rs = rm.surfaces.back();
+			rs.textureObjectHandle = Texture::FindOrCreateMaterial( surface.materialName.c_str() );
+			//rs.textureObjectHandle = Texture::FindOrCreateMaterial( "assets/256floor.png" );
+			rs.vertexBuffer = CreateBufferWithData( surface.vertexData, true, fileName );
+			rs.indexBuffer = CreateBufferWithData( surface.vertexIndices, false, fileName );
+			rs.numIndices = surface.vertexIndices.size();
+			rs.numVertices = surface.vertexData.size();
+			
+			std::cout << "Submodel " << surface.materialName << std::endl
+				<< "  " << rs.numIndices << " indices" << std::endl
+				<< "  " << rs.numVertices << " vertices" << std::endl;
+
+			// Default case ekek
+			if ( rs.textureObjectHandle == -1 )
+			{
+				std::cout << "Cannot find texture: " << surface.materialName << std::endl;
+				rs.textureObjectHandle = 0;
+			}
+	
+			nvrhi::BindingSetDesc setDesc;
+			setDesc.bindings =
+			{
+				nvrhi::BindingSetItem::Texture_SRV( 0, Texture::TextureObjects[rs.textureObjectHandle] ),
+			};
+
+			rs.bindingSet = Renderer::Device->createBindingSet( setDesc, ::Renderer::Scene::BindingLayoutEntity );
 		}
-
-		nvrhi::BindingSetDesc setDesc;
-		setDesc.bindings =
-		{
-			nvrhi::BindingSetItem::Texture_SRV( 0, Texture::TextureObjects[rs.textureObjectHandle] ),
-		};
-
-		rs.bindingSet = Renderer::Device->createBindingSet( setDesc, Renderer::Scene::BindingLayoutEntity );
 
 		return RenderModels.size() - 1;
 	}
@@ -740,29 +759,14 @@ namespace Renderer
 
 			// Todo: expand these with surface indices
 
+			const adm::Vector<Model::RenderSurface>& GetRenderSurfaces() const
+			{
+				return GetRenderModel().surfaces;
+			}
+
 			Model::RenderModel& GetRenderModel() const
 			{
 				return Model::RenderModels[renderModelIndex];
-			}
-
-			nvrhi::BindingSetHandle GetBindingSet() const
-			{
-				return GetRenderModel().surfaces[0].bindingSet;
-			}
-
-			nvrhi::BufferHandle GetVertexBuffer() const
-			{
-				return GetRenderModel().surfaces[0].vertexBuffer;
-			}
-
-			nvrhi::BufferHandle GetIndexBuffer() const
-			{
-				return GetRenderModel().surfaces[0].indexBuffer;
-			}
-
-			uint32_t GetNumIndices() const
-			{
-				return GetRenderModel().surfaces[0].numIndices;
 			}
 		};
 	}
@@ -890,7 +894,7 @@ namespace Renderer
 
 	ConstantBufferData TransformData
 	{
-		glm::lookAt( glm::vec3( -1.8f, -1.5f, 1.333f ), glm::vec3( 0.0f, 0.0f, 1.0f ), glm::vec3( 0.0f, 0.0f, 1.0f ) ),
+		glm::lookAt( glm::vec3( -1.8f, -1.5f, 1.733f ), glm::vec3( 0.0f, 0.0f, 1.0f ), glm::vec3( 0.0f, 0.0f, 1.0f ) ),
 		glm::perspectiveZO( glm::radians( 105.0f ), 16.0f / 9.0f, 0.01f, MaxViewDistance ),
 		0.0f
 	};
@@ -916,8 +920,8 @@ namespace Renderer
 		dcp.messageCallback = &NvrhiMessageCallback;
 		dcp.backBufferWidth = windowWidth;
 		dcp.backBufferHeight = windowHeight;
-		//dcp.enableDebugRuntime = true;
-		//dcp.enableNvrhiValidationLayer = true;
+		dcp.enableDebugRuntime = true;
+		dcp.enableNvrhiValidationLayer = true;
 		dcp.swapChainFormat = nvrhi::Format::BGRA8_UNORM;
 		dcp.swapChainSampleCount = 1;
 		dcp.swapChainBufferCount = 3;
@@ -1259,15 +1263,23 @@ namespace Renderer
 
 	void LoadEntities()
 	{
+		const auto createEntity = []( const char* modelPath, glm::vec3 position, glm::mat4 orientation )
+		{
+			RenderEntities.push_back( {} );
+			auto& re = RenderEntities.back();
+
+			re.renderModelIndex = Model::LoadRenderModelFromGltf( modelPath );
+			re.transform = glm::translate( glm::identity<glm::mat4>(), position ) * orientation;
+		};
+
 		// Create default texture
 		Texture::FindOrCreateMaterial( nullptr );
 
-		// For starters, load just one entity
-		RenderEntities.push_back( {} );
-		auto& re = RenderEntities.back();
-
-		re.renderModelIndex = Model::LoadRenderModelFromGltf( "assets/TestEnvironment.glb" );
-		re.transform = glm::identity<glm::mat4>();
+		createEntity( "assets/TestEnvironment.glb", { 0.0f, 0.0f, 0.0f }, glm::identity<glm::mat4>() );
+		createEntity( "assets/MossPatch.glb", { 0.0f, 0.0f, 0.0f }, glm::identity<glm::mat4>() );
+		
+		//createEntity( "assets/protogen_25d.glb", { -1.0f, 0.0f, 0.0f }, glm::eulerAngleXYZ( glm::radians( 100.0f ), glm::radians( 0.0f ), glm::radians( 0.0f ) ) );
+		//createEntity( "assets/skunk.glb", { 0.0f, -1.0f, 0.0f }, glm::eulerAngleXYZ( glm::radians( 105.0f ), glm::radians( -90.0f ), glm::radians( 15.0f ) ) );
 	}
 
 	void RenderScreenQuad()
@@ -1315,26 +1327,162 @@ namespace Renderer
 		{
 			// Update per-entity transform data
 			CommandList->writeBuffer( Scene::ConstantBufferEntity, &renderEntity.transform, sizeof( glm::mat4 ) );
-			// Combine the global binding set (viewproj matrix + time + sampler)
-			// with the per-entity binding set (diffuse texture)
-			auto& bindingSet = renderEntity.GetBindingSet();
 
-			graphicsState.bindings = 
-			{ 
-				Scene::BindingSet, 
-				renderEntity.GetBindingSet(),
-			};
-			// It is possible to use multiple vertex buffers, but we're only using one here
-			graphicsState.vertexBuffers = { { renderEntity.GetVertexBuffer(), 0, 0 } };
-			graphicsState.indexBuffer = { renderEntity.GetIndexBuffer(), nvrhi::Format::R32_UINT, 0 };
+			// Draw all surfaces
+			for ( const auto& renderSurface : renderEntity.GetRenderSurfaces() )
+			{
+				// Combine the global binding set (viewproj matrix + time + sampler)
+				// with the per-entity binding set (diffuse texture)
+				graphicsState.bindings =
+				{
+					Scene::BindingSet,
+					renderSurface.bindingSet,
+				};
+				// It is possible to use multiple vertex buffers (one for positions, one for normals etc.), 
+				// but we're only using one here
+				graphicsState.vertexBuffers = { { renderSurface.vertexBuffer, 0, 0 } };
+				graphicsState.indexBuffer = { renderSurface.indexBuffer, nvrhi::Format::R32_UINT, 0 };
 
-			CommandList->setGraphicsState( graphicsState );
+				CommandList->setGraphicsState( graphicsState );
 
-			// Draw the thing
-			auto& args = nvrhi::DrawArguments()
-				.setVertexCount( renderEntity.GetNumIndices() ); // Vertex count is actually index count in this case
-			CommandList->drawIndexed( args );
+				// Draw the thing
+				auto& args = nvrhi::DrawArguments()
+					.setVertexCount( renderSurface.numIndices ); // Vertex count is actually index count in this case
+				CommandList->drawIndexed( args );
+			}
 		}
+	}
+
+	void CalculateDirections( const glm::vec3& angles, glm::vec3& forward, glm::vec3& right, glm::vec3& up )
+	{
+		const float cosPitch = std::cos( glm::radians( -angles.x ) );
+		const float cosYaw = std::cos( glm::radians( angles.y ) );
+		const float cosRoll = std::cos( glm::radians( angles.z ) );
+
+		const float sinPitch = std::sin( glm::radians( -angles.x ) );
+		const float sinYaw = std::sin( glm::radians( angles.y ) );
+		const float sinRoll = std::sin( glm::radians( angles.z ) );
+
+		forward =
+		{
+			cosYaw * cosPitch,
+			sinYaw * cosPitch,
+			-sinPitch
+		};
+		
+		up =
+		{
+			-sinYaw * -sinRoll + cosYaw * sinPitch * cosRoll,
+			cosYaw * -sinRoll + sinYaw * sinPitch * cosRoll,
+			(cosPitch * cosRoll)
+		};
+	
+		right = glm::cross( forward, up );
+	}
+
+	glm::mat4 CalculateViewMatrix( const glm::vec3& position, const glm::vec3& angles )
+	{
+		constexpr int forward = 2;
+		constexpr int right = 0;
+		constexpr int up = 1;
+		constexpr int pos = 3;
+
+		constexpr int x = 0;
+		constexpr int y = 1;
+		constexpr int z = 2;
+		constexpr int w = 3;
+
+		glm::vec3 vForward, vRight, vUp;
+		CalculateDirections( angles, vForward, vRight, vUp );
+		vRight *= -1.0f;
+
+		return glm::lookAt( position, position + vForward, vUp );
+
+		glm::mat4 m( 1.0f );
+		m[x][forward] = -vForward.x;
+		m[y][forward] = -vForward.y;
+		m[z][forward] = -vForward.z;
+
+		m[x][right] = vRight.x;
+		m[y][right] = vRight.y;
+		m[z][right] = vRight.z;
+		
+		m[x][up] = vUp.x;
+		m[y][up] = vUp.y;
+		m[z][up] = vUp.z;
+
+		m[pos][forward] = glm::dot( vForward, position );
+		m[pos][right] = -glm::dot( vRight, position );
+		m[pos][up] = -glm::dot( vUp, position );
+
+		return m;
+	}
+
+	void Update( float deltaTime )
+	{
+		static glm::vec3 viewPosition{};
+		static glm::vec3 viewAngles{ 0.0f, 0.0f, 0.0f };
+
+		glm::vec3 viewForward, viewRight, viewUp;
+		CalculateDirections( viewAngles, viewForward, viewRight, viewUp );
+
+		// Update view angles
+		{
+			int mx, my;
+			int mstate = SDL_GetRelativeMouseState( &mx, &my );
+
+			if ( mstate & SDL_BUTTON_RMASK )
+			{
+				viewAngles.y -= mx * 0.2f;
+				viewAngles.x -= my * 0.2f;
+
+				std::cout << "m " << mx << " " << my << std::endl;
+				std::cout << "v " << viewAngles.x << " " << viewAngles.y << " " << viewAngles.z << std::endl;
+			}
+		}
+
+		// Update view position
+		{
+			const auto* keys = SDL_GetKeyboardState( nullptr );
+			if ( keys[SDL_SCANCODE_W] )
+			{
+				viewPosition += viewForward * deltaTime * 5.0f;
+			}
+			if ( keys[SDL_SCANCODE_S] )
+			{
+				viewPosition -= viewForward * deltaTime * 5.0f;
+			}
+			if ( keys[SDL_SCANCODE_D] )
+			{
+				viewPosition += viewRight * deltaTime * 5.0f;
+			}
+			if ( keys[SDL_SCANCODE_A] )
+			{
+				viewPosition -= viewRight * deltaTime * 5.0f;
+			}
+			if ( keys[SDL_SCANCODE_SPACE] )
+			{
+				viewPosition += viewUp * deltaTime * 5.0f;
+			}
+			if ( keys[SDL_SCANCODE_LCTRL] )
+			{
+				viewPosition -= viewUp * deltaTime * 5.0f;
+			}
+
+			float rollTarget = 0.0f;
+			if ( keys[SDL_SCANCODE_Q] )
+			{
+				rollTarget -= 45.0f;
+			}
+			if ( keys[SDL_SCANCODE_E] )
+			{
+				rollTarget += 45.0f;
+			}
+			viewAngles.z = adm::Fade( viewAngles.z, rollTarget, 0.1f, deltaTime );
+		}
+
+		// Calculate view matrix
+		TransformData.viewMatrix = CalculateViewMatrix( viewPosition, viewAngles );
 	}
 
 	void Render()
@@ -1457,6 +1605,7 @@ namespace System
 			}
 		}
 
+		Renderer::Update( 0.016f );
 		Renderer::Render();
 
 		std::this_thread::sleep_for( std::chrono::milliseconds( 16 ) );

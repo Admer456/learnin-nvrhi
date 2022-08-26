@@ -37,13 +37,12 @@ void main_vs(
 {
 	float4x4 finalMatrix = mul( entityMatrix, mul( viewMatrix, projectionMatrix ) );
 	float4 transformedPos = mul( float4( inPosition, 1.0 ), finalMatrix );
-
-	transformedPos = mul( float4( inPosition, 1.0 ), mul( viewMatrix, projectionMatrix ) );
+	float4 transformedNormal = mul( float4( inNormal, 0.0 ), entityMatrix );
 
 	outPosition = transformedPos;
 	outTexcoords = inTexcoords;
-	outColour = inColour.xyz;
-	outNormal = inNormal;
+	outColour = inColour;
+	outNormal = transformedNormal.xyz;
 }
 
 SamplerState diffuseSampler : register(s0);

@@ -110,11 +110,13 @@ if( WIN32 )
 endif()
 
 install( FILES 
+	${THE_ROOT}/assets/MossPatch.glb
 	${THE_ROOT}/assets/splotch.glb
 	${THE_ROOT}/assets/pentagon.glb
 	${THE_ROOT}/assets/TestEnvironment.glb
 	${THE_ROOT}/assets/Trongle.glb
 	${THE_ROOT}/assets/256floor.png
+	${THE_ROOT}/assets/moss.png
 	DESTINATION ${THE_ROOT}/bin/assets/ )
 
 ## Copy over shaders too
