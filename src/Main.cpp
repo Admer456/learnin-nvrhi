@@ -514,9 +514,6 @@ namespace Renderer
 
 		createEntity( "assets/TestEnvironment.glb", { 0.0f, 0.0f, 0.0f }, glm::identity<glm::mat4>() );
 		createEntity( "assets/MossPatch.glb", { 0.0f, 0.0f, 0.0f }, glm::identity<glm::mat4>() );
-		
-		//createEntity( "assets/protogen_25d.glb", { -1.0f, 0.0f, 0.0f }, glm::eulerAngleXYZ( glm::radians( 100.0f ), glm::radians( 0.0f ), glm::radians( 0.0f ) ) );
-		//createEntity( "assets/skunk.glb", { 0.0f, -1.0f, 0.0f }, glm::eulerAngleXYZ( glm::radians( 105.0f ), glm::radians( -90.0f ), glm::radians( 15.0f ) ) );
 	}
 
 	void RenderScreenQuad()
@@ -672,9 +669,6 @@ namespace Renderer
 			{
 				viewAngles.y -= mx * 0.2f;
 				viewAngles.x -= my * 0.2f;
-
-				std::cout << "m " << mx << " " << my << std::endl;
-				std::cout << "v " << viewAngles.x << " " << viewAngles.y << " " << viewAngles.z << std::endl;
 			}
 		}
 
@@ -828,12 +822,53 @@ namespace System
 		return true;
 	}
 
+	constexpr size_t MaxFrames = 100U;
+	std::list<float> frameratesCapped;
+	std::list<float> frameratesUncapped;
+
+	void UpdateFramerates( float capped, float uncapped )
+	{
+		static int counter = 0;
+		
+		if ( frameratesCapped.size() >= MaxFrames )
+		{
+			frameratesCapped.pop_front();
+		}
+		if ( frameratesUncapped.size() >= MaxFrames )
+		{
+			frameratesUncapped.pop_front();
+		}
+
+		frameratesCapped.push_back( capped );
+		frameratesUncapped.push_back( uncapped );
+	
+		float averageCapped = 0.0f;
+		float averageUncapped = 0.0f;
+
+		for ( const auto& framerate : frameratesCapped )
+			averageCapped += framerate;
+
+		for ( const auto& framerate : frameratesUncapped )
+			averageUncapped += framerate;
+
+		averageCapped /= frameratesCapped.size();
+		averageUncapped /= frameratesUncapped.size();
+
+		if ( ++counter == 30 )
+		{
+			std::cout << "Capped fps:   " << std::setw( 4 ) << int( averageCapped ) << std::endl
+				      << "Uncapped fps: " << std::setw( 4 ) << int( averageUncapped ) << std::endl;
+			counter = 0;
+		}
+	}
+
 	void Update( bool& outShouldQuit )
 	{
 		static float time = 0.0f;
 		static float deltaTime = 1.0f / 60.0f;
-		adm::Timer t;
-
+		
+		adm::TimerPreciseDouble t;
+		
 		{
 			SDL_Event ev;
 			while ( SDL_PollEvent( &ev ) )
@@ -849,19 +884,17 @@ namespace System
 		Renderer::Update( deltaTime );
 		Renderer::Render();
 
-		float deltaT = t.GetElapsed( adm::Timer::Seconds );
+		double deltaT = t.GetElapsed( adm::TimeUnits::Seconds );
 
-		float sleepFor = (1.0f / 90.0f) - deltaT;
-		if ( sleepFor > 0.0f )
+		double sleepFor = (1.0 / 90.0) - deltaT;
+		if ( sleepFor > 0.0 )
 		{
-			int microseconds = int( sleepFor * 1000.0f * 1000.0f );
+			uint32_t microseconds = uint32_t( sleepFor * 1000.0 * 1000.0 );
 			std::this_thread::sleep_for( std::chrono::microseconds( microseconds ) );
 		}
 
-		deltaTime = t.GetElapsed( adm::Timer::Seconds );
-
-		std::cout << std::setw( 6 ) << std::setprecision( 1 ) << std::fixed << std::setprecision(1) << 1.0f / deltaT << "fps uncapped" << std::endl
-			<< 1.0f / deltaTime << "fps capped" << std::endl;
+		deltaTime = t.GetElapsed( adm::TimeUnits::Seconds );
+		UpdateFramerates( 1.0f / deltaTime, 1.0f / deltaT );
 	}
 
 	int Shutdown( const char* reason = nullptr )
