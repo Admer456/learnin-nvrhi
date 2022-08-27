@@ -1,5 +1,8 @@
 
 #include <thread>
+#include <string_view>
+using namespace std::string_literals;
+using namespace std::string_view_literals;
 
 #include "Common.hpp"
 
@@ -133,7 +136,7 @@ namespace Renderer
 		0.0f
 	};
 
-	bool Init( SDL_Window* window, int windowWidth, int windowHeight )
+	bool Init( SDL_Window* window, int windowWidth, int windowHeight, nvrhi::GraphicsAPI graphicsApi )
 	{
 		using nvrhi::MessageSeverity;
 
@@ -143,7 +146,7 @@ namespace Renderer
 		MessageCallbackImpl& NvrhiMessageCallback = adm::Singleton<MessageCallbackImpl>::GetInstance();
 		NvrhiMessageCallback.message( MessageSeverity::Info, "Initialising NVRHI..." );
 
-		DeviceManager = nvrhi::app::DeviceManager::Create( nvrhi::GraphicsAPI::VULKAN );
+		DeviceManager = nvrhi::app::DeviceManager::Create( graphicsApi );
 		if ( nullptr == DeviceManager )
 		{
 			NvrhiMessageCallback.message( MessageSeverity::Fatal, "Couldn't create DeviceManager" );
@@ -183,18 +186,35 @@ namespace Renderer
 		// ==========================================================================================================
 
 		// Load the shaders from a SPIR-V binary that we'll produce with NVRHI-SC
-		const auto loadShaders = []( const char* vertexBinaryFile, const char* pixelBinaryFile, 
+		const auto loadShaders = [&graphicsApi]( const char* vertexBinaryFile, const char* pixelBinaryFile, 
 			nvrhi::ShaderHandle& outVertexShader, nvrhi::ShaderHandle& outPixelShader )
 		{
+			std::string vertexBinaryPath, pixelBinaryPath;
 			Shader::ShaderBinary vertexBinary, pixelBinary;
 
-			if ( !Shader::LoadShaderBinary( vertexBinaryFile, vertexBinary ) )
+			switch ( graphicsApi )
+			{
+			case nvrhi::GraphicsAPI::D3D11:
+				vertexBinaryPath = "assets/shaders/dx11/"s + vertexBinaryFile;
+				pixelBinaryPath =  "assets/shaders/dx11/"s + pixelBinaryFile;
+				break;
+			case nvrhi::GraphicsAPI::D3D12:
+				vertexBinaryPath = "assets/shaders/dx12/"s + vertexBinaryFile;
+				pixelBinaryPath =  "assets/shaders/dx12/"s + pixelBinaryFile;
+				break;
+			case nvrhi::GraphicsAPI::VULKAN:
+				vertexBinaryPath = "assets/shaders/vk/"s + vertexBinaryFile;
+				pixelBinaryPath =  "assets/shaders/vk/"s + pixelBinaryFile;
+				break;
+			}
+
+			if ( !Shader::LoadShaderBinary( vertexBinaryPath.c_str(), vertexBinary) )
 			{
 				std::cout << "Couldn't load shader '" << vertexBinaryFile << "'" << std::endl;
 				return false;
 			}
 
-			if ( !Shader::LoadShaderBinary( pixelBinaryFile, pixelBinary ) )
+			if ( !Shader::LoadShaderBinary( pixelBinaryPath.c_str(), pixelBinary) )
 			{
 				std::cout << "Couldn't load shader '" << pixelBinaryFile << "'" << std::endl;
 				return false;
@@ -227,13 +247,13 @@ namespace Renderer
 			return true;
 		};
 
-		if ( !loadShaders( "assets/shaders/default_main_vs.bin", "assets/shaders/default_main_ps.bin", Scene::VertexShader, Scene::PixelShader ) )
+		if ( !loadShaders( "default_main_vs.bin", "default_main_ps.bin", Scene::VertexShader, Scene::PixelShader ) )
 		{
 			std::cout << "Failed to load the scene shaders" << std::endl;
 			return false;
 		}
 
-		if ( !loadShaders( "assets/shaders/screen_main_vs.bin", "assets/shaders/screen_main_ps.bin", ScreenQuad::VertexShader, ScreenQuad::PixelShader ) )
+		if ( !loadShaders( "screen_main_vs.bin", "screen_main_ps.bin", ScreenQuad::VertexShader, ScreenQuad::PixelShader ) )
 		{
 			std::cout << "Failed to load the screen shaders" << std::endl;
 			return false;
@@ -806,13 +826,13 @@ namespace System
 {
 	SDL_Window* Window = nullptr;
 
-	bool Init( const char* windowTitle, int windowWidth, int windowHeight )
+	bool Init( const char* windowTitle, int windowWidth, int windowHeight, nvrhi::GraphicsAPI graphicsApi )
 	{
 		SDL_Init( SDL_INIT_VIDEO | SDL_INIT_EVENTS );
 		
 		Window = SDL_CreateWindow( windowTitle, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowWidth, windowHeight, SDL_WINDOW_VULKAN );
 	
-		if ( !Renderer::Init( Window, windowWidth, windowHeight ) )
+		if ( !Renderer::Init( Window, windowWidth, windowHeight, graphicsApi ) )
 		{
 			std::cout << "System::Init: couldn't initialise Renderer" << std::endl;
 			return false;
@@ -919,7 +939,44 @@ namespace System
 
 int main( int argc, char** argv )
 {
-	if ( !System::Init( "nBidia pls fox", 1600, 900 ) )
+	nvrhi::GraphicsAPI api = nvrhi::GraphicsAPI::VULKAN;
+	std::stringstream ss;
+	bool unknownParams = false;
+
+	// Linux has no DirectX obviously
+	if constexpr ( adm::Platform == adm::Platforms::Windows )
+	{
+		ss << "Unrecognised parameter(s): " << std::endl;
+		for ( int i = 0; i < argc; i++ )
+		{
+			if ( argv[i] == "-dx12"sv )
+			{
+				api = nvrhi::GraphicsAPI::D3D12;
+				std::cout << "Using DirectX 12" << std::endl;
+			}
+			else if ( argv[i] == "-dx11"sv )
+			{
+				api = nvrhi::GraphicsAPI::D3D11;
+				std::cout << "Using DirectX 11" << std::endl;
+			}
+			else if ( argv[i] == "-vk"sv )
+			{
+				api = nvrhi::GraphicsAPI::VULKAN;
+				std::cout << "Vulkan is already enabled by default" << std::endl;
+			}
+			else
+			{
+				ss << "    " << argv[i] << std::endl;
+				unknownParams = true;
+			}
+		}
+		if ( unknownParams )
+		{
+			std::cout << ss.str() << std::endl;
+		}
+	}
+
+	if ( !System::Init( "nBidia pls fox", 1600, 900, api ) )
 	{
 		return System::Shutdown( "Couldn't initialise" );
 	}
