@@ -30,3 +30,7 @@ Cleanup todo:
 * simplify CMakeLists for this thing
 
 Once some more things are done, I'll be using NVRHI as a render backend for [my engine](https://github.com/Admer456/btx-engine).
+
+--------------
+
+Licenced under MIT, with parts of code derived from Donut (DeviceManagerVK.cpp, DeviceManagerDX12.cpp), licenced by nVidia under the MIT licence.

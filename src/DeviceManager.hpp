@@ -20,7 +20,7 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
-// Adapted from Donut:
+// Adapted from Donut's DeviceManager:
 // https://github.com/NVIDIAGameWorks/donut/blob/main/include/donut/app/DeviceManager.h
 
 #pragma once
