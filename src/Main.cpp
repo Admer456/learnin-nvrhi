@@ -45,11 +45,6 @@ namespace Renderer
 		nvrhi::TextureHandle MainFramebufferDepthImage;
 		nvrhi::FramebufferHandle MainFramebuffer;
 
-		// Data
-		//nvrhi::BufferHandle VertexBuffer;
-		//nvrhi::BufferHandle IndexBuffer;
-
-		//nvrhi::TextureHandle DiffuseTexture;
 		nvrhi::SamplerHandle DiffuseTextureSampler;
 
 		nvrhi::BufferHandle ConstantBufferGlobal;
@@ -115,23 +110,26 @@ namespace Renderer
 		}
 	};
 
+	// Data that changes per frame
 	struct ConstantBufferData
 	{
 		glm::mat4 viewMatrix;
 		glm::mat4 projectionMatrix;
 		float time;
 	};
-
+	// Data that changes per render entity
 	struct ConstantBufferDataEntity
 	{
 		glm::mat4 entityMatrix;
 	};
+	// There is also data that changes per render surface,
+	// i.e. the texture(s), look at Common.hpp::Model::RenderSurface
 
 	constexpr float MaxViewDistance = 100.0f;
 
 	ConstantBufferData TransformData
 	{
-		glm::lookAt( glm::vec3( -1.8f, -1.5f, 1.733f ), glm::vec3( 0.0f, 0.0f, 1.0f ), glm::vec3( 0.0f, 0.0f, 1.0f ) ),
+		glm::identity<glm::mat4>(),
 		glm::perspectiveZO( glm::radians( 105.0f ), 16.0f / 9.0f, 0.01f, MaxViewDistance ),
 		0.0f
 	};
@@ -158,12 +156,14 @@ namespace Renderer
 		dcp.messageCallback = &NvrhiMessageCallback;
 		dcp.backBufferWidth = windowWidth;
 		dcp.backBufferHeight = windowHeight;
+		// Enable these if you have Vulkan or DirectX 12 validation layers and your device supports them
 		//dcp.enableDebugRuntime = true;
 		//dcp.enableNvrhiValidationLayer = true;
+		// SDL2 is pretty tricky regarding the swap chain format, but I think I figured it out
 		dcp.swapChainFormat = nvrhi::Format::BGRA8_UNORM;
-		dcp.swapChainSampleCount = 1;
-		dcp.swapChainBufferCount = 3;
-		dcp.refreshRate = 60;
+		dcp.swapChainSampleCount = 1; // MSAA
+		dcp.swapChainBufferCount = 3; // double buffering or, in this case, triple buffering
+		dcp.refreshRate = 60; // this has no effect since V-sync is off
 
 		System::GetVulkanExtensionsForSDL( dcp.requiredVulkanInstanceExtensions );
 		System::PopulateWindowData( window, dcp.windowSurfaceData );
@@ -185,7 +185,9 @@ namespace Renderer
 		// SHADER LOADING
 		// ==========================================================================================================
 
-		// Load the shaders from a SPIR-V binary that we'll produce with NVRHI-SC
+		// Load the shaders from a SPIR-V/DXIL/DXBC binary that we'll produce with NVRHI-SC
+		// A way that is IMO better would be to modify NVRHI-SC to output .dxil, .dxbc and .spv instead of .bin for everything
+		// I can always for the shader compiler frontend, so yeah, we'll see
 		const auto loadShaders = [&graphicsApi]( const char* vertexBinaryFile, const char* pixelBinaryFile, 
 			nvrhi::ShaderHandle& outVertexShader, nvrhi::ShaderHandle& outPixelShader )
 		{
@@ -196,15 +198,15 @@ namespace Renderer
 			{
 			case nvrhi::GraphicsAPI::D3D11:
 				vertexBinaryPath = "assets/shaders/dx11/"s + vertexBinaryFile;
-				pixelBinaryPath =  "assets/shaders/dx11/"s + pixelBinaryFile;
+				pixelBinaryPath  = "assets/shaders/dx11/"s + pixelBinaryFile;
 				break;
 			case nvrhi::GraphicsAPI::D3D12:
 				vertexBinaryPath = "assets/shaders/dx12/"s + vertexBinaryFile;
-				pixelBinaryPath =  "assets/shaders/dx12/"s + pixelBinaryFile;
+				pixelBinaryPath  = "assets/shaders/dx12/"s + pixelBinaryFile;
 				break;
 			case nvrhi::GraphicsAPI::VULKAN:
 				vertexBinaryPath = "assets/shaders/vk/"s + vertexBinaryFile;
-				pixelBinaryPath =  "assets/shaders/vk/"s + pixelBinaryFile;
+				pixelBinaryPath  = "assets/shaders/vk/"s + pixelBinaryFile;
 				break;
 			}
 
@@ -262,6 +264,7 @@ namespace Renderer
 		// ==========================================================================================================
 		// GEOMETRY LOADING
 		// Set up vertex attributes, i.e. describe how our vertex data will be interpreted
+		// If you're coming from OpenGL, this is similar to glVertexAttribPointer, but way nicer to work with IMO
 		// ==========================================================================================================
 		nvrhi::VertexAttributeDesc screenVertexAttributes[]
 		{
@@ -342,6 +345,11 @@ namespace Renderer
 
 		// ==========================================================================================================
 		// TEXTURE CREATION
+		// 
+		// 1) create a sampler that will determine how textures are filtered (nearest, bilinear etc.)
+		// 2) create a colour and depth texture for our framebuffer, so we can render our scene with depth testing
+		// 2.1) the two textures will also be used as inputs for the ScreenQuad shader, so we can do post-processing
+		// 3) create the framebuffers
 		// ==========================================================================================================
 
 		// Sampler
@@ -351,12 +359,10 @@ namespace Renderer
 			.setAllAddressModes( nvrhi::SamplerAddressMode::Wrap );
 		
 		Scene::DiffuseTextureSampler = Device->createSampler( textureSampler );
-
 		if ( !Check( Scene::DiffuseTextureSampler, "Failed to create Scene::DiffuseTextureSampler" ) )
 			return false;
 
 		using RStates = nvrhi::ResourceStates;
-
 		const RStates ColourBufferStates = RStates::RenderTarget;
 		const RStates DepthBufferStates = RStates::DepthWrite;
 
@@ -371,35 +377,31 @@ namespace Renderer
 			.setIsRenderTarget( true )
 			.setDebugName( "Colour attachment image" );
 
-		auto depthAttachmentDesc = nvrhi::TextureDesc()
-			.setWidth( dcp.backBufferWidth )
-			.setHeight( dcp.backBufferHeight )
-			.setFormat( nvrhi::Format::D32 )
-			.setDimension( nvrhi::TextureDimension::Texture2D )
-			.setKeepInitialState( true )
-			.setInitialState( DepthBufferStates )
-			.setIsRenderTarget( true )
-			.setDebugName( "Depth attachment image" );
-
 		Scene::MainFramebufferColourImage = Device->createTexture( colourAttachmentDesc );
-		Scene::MainFramebufferDepthImage = Device->createTexture( depthAttachmentDesc );
-
 		if ( !Check( Scene::MainFramebufferColourImage, "Failed to create Scene::MainFramebufferColourImage" ) )
 			return false;
+
+		auto depthAttachmentDesc = colourAttachmentDesc
+			.setFormat( nvrhi::Format::D32 )
+			.setDimension( nvrhi::TextureDimension::Texture2D )
+			.setInitialState( DepthBufferStates )
+			.setDebugName( "Depth attachment image" );
+
+		Scene::MainFramebufferDepthImage = Device->createTexture( depthAttachmentDesc );
 		if ( !Check( Scene::MainFramebufferDepthImage, "Failed to create Scene::MainFramebufferDepthImage" ) )
 			return false;
 
+		// ==========================================================================================================
+		// FRAMEBUFFER CREATION
+		// ==========================================================================================================
 		auto mainFramebufferDesc = nvrhi::FramebufferDesc()
 			.addColorAttachment( Scene::MainFramebufferColourImage )
 			.setDepthAttachment( Scene::MainFramebufferDepthImage );
 
 		Scene::MainFramebuffer = Device->createFramebuffer( mainFramebufferDesc );
-
 		if ( !Check( Scene::MainFramebuffer, "Failed to create Scene::MainFramebuffer" ) )
 			return false;
 
-		const auto& framebufferInfo = Scene::MainFramebuffer->getFramebufferInfo();
-		
 		const auto printFramebufferInfo = []( const nvrhi::FramebufferInfo& fbInfo, const char* name )
 		{
 			std::cout << "Framebuffer: " << name << std::endl
@@ -410,7 +412,7 @@ namespace Renderer
 				<< "  * Depth format:   " << nvrhi::utils::FormatToString( fbInfo.depthFormat ) << std::endl;
 		};
 
-		printFramebufferInfo( framebufferInfo, "Main framebuffer" );
+		printFramebufferInfo( Scene::MainFramebuffer->getFramebufferInfo(), "Main framebuffer" );
 		printFramebufferInfo( DeviceManager->GetCurrentFramebuffer()->getFramebufferInfo(), "Backbuffer" );
 
 		// ==========================================================================================================
@@ -437,10 +439,12 @@ namespace Renderer
 
 		// ==========================================================================================================
 		// LAYOUT BINDINGS
+		// 
+		// Layout bindings describe what kinds of parameters are passed to the shader
 		// ==========================================================================================================
 		nvrhi::BindingLayoutDesc layoutDesc;
 		layoutDesc.registerSpace = 0U;
-		layoutDesc.visibility = nvrhi::ShaderType::All;
+		layoutDesc.visibility = nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel;
 		// Per-frame bindings
 		layoutDesc.bindings =
 		{
@@ -473,11 +477,18 @@ namespace Renderer
 			nvrhi::BindingSetItem::Texture_SRV( 0, Scene::MainFramebufferColourImage ),
 			nvrhi::BindingSetItem::Texture_SRV( 1, Scene::MainFramebufferDepthImage ),
 			nvrhi::BindingSetItem::Sampler( 0, Scene::DiffuseTextureSampler )
-		};
-		nvrhi::utils::CreateBindingSetAndLayout( Device, nvrhi::ShaderType::All, 0, setDesc, ScreenQuad::BindingLayout, ScreenQuad::BindingSet );
+		}; // We can use CreateBindingSetAndLayout because we know the set in advance here
+		nvrhi::utils::CreateBindingSetAndLayout( Device, nvrhi::ShaderType::Vertex | nvrhi::ShaderType::Pixel, 0, setDesc, ScreenQuad::BindingLayout, ScreenQuad::BindingSet );
 
 		// ==========================================================================================================
 		// PIPELINE CREATION
+		// 
+		// The pipeline basically glues everything together: the shaders you wanna use, what kinds of parameters
+		// to pass to them, the vertex layout, configure things like depth testing, alpha blending etc.
+		// 
+		// Here we have 2 pipelines, one for the screen quad (depth testing disabled because the backbuffer does
+		// not have a depth buffer), which draws into the backbuffer, and one for the scene, which draws into our
+		// own framebuffer which has depth testing and all. This setup allows for easy post-processing
 		// ==========================================================================================================
 
 		// Screen pipeline
@@ -492,8 +503,9 @@ namespace Renderer
 		pipelineDesc.renderState.rasterState.cullMode = nvrhi::RasterCullMode::None;
 		pipelineDesc.bindingLayouts = { ScreenQuad::BindingLayout };
 
+		// If you get errors in DX12 here, you are likely missing dxil.dll. You should have dxc.exe, dxcompiler.dll AND dxil.dll,
+		// as the 3rd one will perform shader validation/signature, and DX12 doesn't like unsigned shaders by default (you'd need to modify NVRHI to allow that)
 		ScreenQuad::Pipeline = Device->createGraphicsPipeline( pipelineDesc, DeviceManager->GetCurrentFramebuffer() );
-
 		if ( !Check( ScreenQuad::Pipeline, "Could not create ScreenQuad::Pipeline" ) )
 			return false;
 
@@ -508,11 +520,10 @@ namespace Renderer
 		pipelineDesc.bindingLayouts = 
 		{
 			Scene::BindingLayoutGlobal,
-			Scene::BindingLayoutEntity,
+			Scene::BindingLayoutEntity
 		};
 
 		Scene::Pipeline = Device->createGraphicsPipeline( pipelineDesc, Scene::MainFramebuffer );
-
 		if ( !Check( Scene::Pipeline, "Could not create Scene::Pipeline" ) )
 			return false;
 
@@ -608,6 +619,10 @@ namespace Renderer
 		}
 	}
 
+	// Adapted from glm::eulerAnglesXYZ by trying out different combinations until I got what I wanted
+	// Positive pitch will make the forward axis go up
+	// Positive yaw will make forward and right spin counter-clockwise (if you want it the other way, put -angles.y
+	// Positive roll will make the up axis rotate clockwise about the forward axis
 	void CalculateDirections( const glm::vec3& angles, glm::vec3& forward, glm::vec3& right, glm::vec3& up )
 	{
 		const float cosPitch = std::cos( glm::radians( -angles.x ) );
@@ -635,6 +650,7 @@ namespace Renderer
 		right = glm::cross( forward, up );
 	}
 
+	// Adapted from glm::lookAt
 	glm::mat4 CalculateViewMatrix( const glm::vec3& position, const glm::vec3& angles )
 	{
 		constexpr int forward = 2;
@@ -907,6 +923,7 @@ namespace System
 
 		double deltaT = t.GetElapsed( adm::TimeUnits::Seconds );
 
+		// Weirdly enough this won't actually result in 90fps, but something like 83 or 85
 		double sleepFor = (1.0 / 90.0) - deltaT;
 		if ( sleepFor > 0.0 )
 		{
@@ -940,12 +957,13 @@ namespace System
 int main( int argc, char** argv )
 {
 	nvrhi::GraphicsAPI api = nvrhi::GraphicsAPI::VULKAN;
-	std::stringstream ss;
-	bool unknownParams = false;
-
+	
 	// Linux has no DirectX obviously
 	if constexpr ( adm::Platform == adm::Platforms::Windows )
 	{
+		std::stringstream ss;
+		bool unknownParams = false;
+
 		ss << "Unrecognised parameter(s): " << std::endl;
 		for ( int i = 0; i < argc; i++ )
 		{
