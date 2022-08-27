@@ -338,7 +338,7 @@ namespace Renderer
 		using RStates = nvrhi::ResourceStates;
 
 		const RStates ColourBufferStates = RStates::RenderTarget;
-		const RStates DepthBufferStates = RStates::DepthWrite | RStates::DepthRead;
+		const RStates DepthBufferStates = RStates::DepthWrite;
 
 		// Colour and depth attachment for the framebuffer
 		auto colourAttachmentDesc = nvrhi::TextureDesc()
@@ -355,7 +355,6 @@ namespace Renderer
 			.setWidth( dcp.backBufferWidth )
 			.setHeight( dcp.backBufferHeight )
 			.setFormat( nvrhi::Format::D32 )
-			.setIsTypeless( true )
 			.setDimension( nvrhi::TextureDimension::Texture2D )
 			.setKeepInitialState( true )
 			.setInitialState( DepthBufferStates )
@@ -469,7 +468,8 @@ namespace Renderer
 		pipelineDesc.primType = nvrhi::PrimitiveType::TriangleList;
 		pipelineDesc.renderState.depthStencilState.depthTestEnable = false;
 		pipelineDesc.renderState.depthStencilState.depthWriteEnable = false;
-		pipelineDesc.renderState.rasterState.setCullNone();
+		pipelineDesc.renderState.depthStencilState.stencilEnable = false;
+		pipelineDesc.renderState.rasterState.cullMode = nvrhi::RasterCullMode::None;
 		pipelineDesc.bindingLayouts = { ScreenQuad::BindingLayout };
 
 		ScreenQuad::Pipeline = Device->createGraphicsPipeline( pipelineDesc, DeviceManager->GetCurrentFramebuffer() );
@@ -484,6 +484,7 @@ namespace Renderer
 		pipelineDesc.renderState.depthStencilState.depthTestEnable = true;
 		pipelineDesc.renderState.depthStencilState.depthWriteEnable = true;
 		pipelineDesc.renderState.depthStencilState.depthFunc = nvrhi::ComparisonFunc::Less;
+		pipelineDesc.renderState.rasterState.cullMode = nvrhi::RasterCullMode::Front;
 		pipelineDesc.bindingLayouts = 
 		{
 			Scene::BindingLayoutGlobal,
