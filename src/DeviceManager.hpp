@@ -116,6 +116,10 @@ namespace nvrhi::app
 
         WindowSurfaceData windowSurfaceData;
 
+        bool startMaximized = false;
+        bool startFullscreen = false;
+        bool allowModeSwitch = true;
+
         uint32_t backBufferWidth = 1280;
         uint32_t backBufferHeight = 720;
         uint32_t refreshRate = 0;

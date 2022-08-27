@@ -12,7 +12,7 @@ set( CMAKE_CXX_STANDARD 17 )
 set( THE_ROOT ${CMAKE_CURRENT_SOURCE_DIR} )
 set_property( GLOBAL PROPERTY USE_FOLDERS ON )
 
-## Set up adm-utils, SDL2, GLM and Vookoo
+## Set up adm-utils, SDL2, GLM and NVRHI
 
 ## adm-utils
 add_subdirectory( external/adm-utils )
@@ -40,27 +40,62 @@ set( GLM_INCLUDE_DIRS
 
 ## NVRHI
 option( NVRHI_BUILD_SHARED OFF )
-option( NVRHI_WITH_SHADER_COMPILER OFF )
-option( NVRHI_WITH_DX11 OFF )
-option( NVRHI_WITH_DX12 OFF )
-add_subdirectory( external/nvrhi )
-set_target_properties( nvrhi nvrhi_vk PROPERTIES
-	FOLDER "Libs" )
+option( NVRHI_WITH_NVAPI OFF )
+option( NVRHI_WITH_RTXMU OFF )
+## NVRHI-SC will be built so you can compile the shaders here
+option( NVRHI_WITH_SHADER_COMPILER ON )
+## No DirectX on Linux
+if ( UNIX )
+	option( NVRHI_WITH_DX11 OFF )
+	option( NVRHI_WITH_DX12 OFF )
+endif()
 
-## Vulkan itsyelf
-find_package( Vulkan REQUIRED )
+if ( NVRHI_WITH_VULKAN )
+	## Vulkan itsyelf
+	find_package( Vulkan REQUIRED )
+endif()
+
+add_subdirectory( external/nvrhi )
+
+if ( NVRHI_WITH_DX11 )
+	set_target_properties( nvrhi_d3d11 PROPERTIES FOLDER "Libs" )
+endif()
+if ( NVRHI_WITH_DX12 )
+	set_target_properties( nvrhi_d3d12 PROPERTIES FOLDER "Libs" )
+endif()
+if ( NVRHI_WITH_VULKAN )
+	set_target_properties( nvrhi_vk PROPERTIES FOLDER "Libs" )
+endif()
+set_target_properties( nvrhi PROPERTIES FOLDER "Libs" )
 
 ## The sources
 set( THE_SOURCES
 	src/Common.hpp
 	src/DeviceManager.cpp
 	src/DeviceManager.hpp
-	src/DeviceManagerVK.cpp
 	src/Main.cpp
 	src/Model.cpp
 	src/Texture.cpp 
 	src/Shader.cpp
 	src/System.cpp )
+
+if ( NVRHI_WITH_DX11 )
+	set( THE_SOURCES
+		${THE_SOURCES}
+		src/DeviceManagerDX11.cpp )
+endif()
+
+if ( NVRHI_WITH_DX12 )
+	set( THE_SOURCES
+		${THE_SOURCES}
+		src/DeviceManagerDX12.cpp )
+endif()
+
+if ( NVRHI_WITH_VULKAN )
+	set( THE_SOURCES
+		${THE_SOURCES}
+		src/DeviceManagerVK.cpp )
+endif()
 
 ## Folder organisation
 source_group( TREE ${THE_ROOT} FILES ${THE_SOURCES} )
@@ -74,29 +109,50 @@ target_include_directories( NvrhiTest PRIVATE
 	${ADMUTIL_INCLUDE_DIRECTORY}
 	${SDL2_INCLUDE_DIRS}
 	${GLM_INCLUDE_DIRS}
-	${Vulkan_INCLUDE_DIR}
 	external/json/include
 	external/fx-gltf
 	external/nvrhi/include
 	external/stb )
 
+if ( NVRHI_WITH_VULKAN )
+	target_include_directories( NvrhiTest PRIVATE ${Vulkan_INCLUDE_DIR} )
+endif()
+
 ## Link against SDL2 libs
-target_link_libraries( NvrhiTest PRIVATE ${SDL2_LIBRARIES} AdmUtils nvrhi nvrhi_vk Vulkan::Vulkan )
+target_link_libraries( NvrhiTest PRIVATE ${SDL2_LIBRARIES} AdmUtils nvrhi )
 
-## Use Vulkan
-target_compile_definitions( nvrhi PRIVATE USE_VK=1 )
-target_compile_definitions( nvrhi_vk PRIVATE USE_VK=1 )
-target_compile_definitions( NvrhiTest PRIVATE USE_VK=1 )
-
-## Vulkan headers include winmindef.h which messes with std::min and std::max
+set( NVRHITEST_DEFINES "" )
 if ( WIN32 )
-	target_compile_definitions( nvrhi PRIVATE NOMINMAX VK_USE_PLATFORM_WIN32_KHR=1 )
-	target_compile_definitions( nvrhi_vk PRIVATE NOMINMAX VK_USE_PLATFORM_WIN32_KHR=1 )
-	target_compile_definitions( NvrhiTest PRIVATE NOMINMAX VK_USE_PLATFORM_WIN32_KHR=1 )
-elseif ( UNIX )
-	target_compile_definitions( nvrhi PRIVATE VK_USE_PLATFORM_XLIB_KHR=1 )
-	target_compile_definitions( nvrhi_vk PRIVATE VK_USE_PLATFORM_XLIB_KHR=1 )
-	target_compile_definitions( NvrhiTest PRIVATE VK_USE_PLATFORM_XLIB_KHR=1 )
+	## Vulkan headers include winmindef.h which messes with std::min and std::max
+	set( NVRHITEST_DEFINES ${NVRHITEST_DEFINES} NOMINMAX VK_USE_PLATFORM_WIN32_KHR=1 )
+elseif( UNIX )
+	set( NVRHITEST_DEFINES ${NVRHITEST_DEFINES} VK_USE_PLATFORM_XLIB_KHR=1 )
+endif()
+
+if ( NVRHI_WITH_DX11 )
+	set( NVRHITEST_DEFINES ${NVRHITEST_DEFINES} USE_DX11=1 )
+	target_link_libraries( NvrhiTest PRIVATE nvrhi_d3d11 )
+endif()
+if ( NVRHI_WITH_DX12 )
+	set( NVRHITEST_DEFINES ${NVRHITEST_DEFINES} USE_DX12=1 )
+	target_link_libraries( NvrhiTest PRIVATE nvrhi_d3d12 )
+endif()
+if ( NVRHI_WITH_VULKAN )
+	set( NVRHITEST_DEFINES ${NVRHITEST_DEFINES} USE_VK=1 )
+	target_link_libraries( NvrhiTest PRIVATE nvrhi_vk Vulkan::Vulkan )
+endif()
+
+target_compile_definitions( nvrhi PRIVATE ${NVRHITEST_DEFINES} )
+target_compile_definitions( NvrhiTest PRIVATE ${NVRHITEST_DEFINES} )
+
+if ( NVRHI_WITH_DX11 )
+	target_compile_definitions( nvrhi_d3d11 PRIVATE ${NVRHITEST_DEFINES} )
+endif()
+if ( NVRHI_WITH_DX12 )
+	target_compile_definitions( nvrhi_d3d12 PRIVATE ${NVRHITEST_DEFINES} )
+endif()
+if ( NVRHI_WITH_VULKAN )
+	target_compile_definitions( nvrhi_vk PRIVATE ${NVRHITEST_DEFINES} )
 endif()
 
 ## Output here
@@ -124,10 +180,27 @@ install( FILES
 	${THE_ROOT}/assets/moss.png
 	DESTINATION ${THE_ROOT}/bin/assets/ )
 
-## Copy over shaders too
-install( FILES 
-	${THE_ROOT}/assets/shaders/default_main_ps.bin
-	${THE_ROOT}/assets/shaders/default_main_vs.bin
-	${THE_ROOT}/assets/shaders/screen_main_vs.bin
-	${THE_ROOT}/assets/shaders/screen_main_ps.bin
-	DESTINATION ${THE_ROOT}/bin/assets/shaders/ )
+function( install_shader rendering_api shader_dir shader output_dir )
+	set( shader_path ${shader_dir}/${rendering_api}/${shader}.bin )
+
+	if ( EXISTS ${shader_path} )
+		install( FILES ${shader_path}
+			DESTINATION ${output_dir}/${rendering_api}/ )
+	endif()
+endfunction( install_shader )
+
+## CMake isn't ideal for copying shaders, I'll probably do modifications to the shader
+## compiler frontend or write a script to do that
+function( install_shaders rendering_api )
+	set( shader_dir ${THE_ROOT}/assets/shaders )
+	set( out_dir ${THE_ROOT}/bin/assets/shaders )
+
+	install_shader( ${rendering_api} ${shader_dir} default_main_ps ${out_dir} )
+	install_shader( ${rendering_api} ${shader_dir} default_main_vs ${out_dir} )
+	install_shader( ${rendering_api} ${shader_dir} screen_main_ps ${out_dir} )
+	install_shader( ${rendering_api} ${shader_dir} screen_main_vs ${out_dir} )
+endfunction( install_shaders )
+
+install_shaders( dx11 )
+install_shaders( dx12 )
+install_shaders( vk )
