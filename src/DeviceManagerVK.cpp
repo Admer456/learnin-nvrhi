@@ -27,8 +27,6 @@
 #include <queue>
 #include <unordered_set>
 
-#define USE_VK 1
-
 #include "DeviceManager.hpp"
 
 #include <nvrhi/vulkan.h>

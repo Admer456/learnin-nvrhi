@@ -43,7 +43,6 @@
 
 #include <nvrhi/nvrhi.h>
 
-#include <list>
 #include <functional>
 
 namespace nvrhi::app
@@ -93,7 +92,7 @@ namespace nvrhi::app
 
     struct WindowSurfaceData
     {
-#if VK_USE_PLATFORM_WIN32_KHR
+#if VK_USE_PLATFORM_WIN32_KHR || USE_DX11 || USE_DX12
         HINSTANCE hInstance{};
         HWND hWindow{};
 #elif VK_USE_PLATFORM_XLIB_KHR
@@ -159,8 +158,6 @@ namespace nvrhi::app
         std::function<void(vk::DeviceCreateInfo&)> deviceCreateInfoCallback;
 #endif
     };
-
-    class IRenderPass;
 
     class DeviceManager
     {
@@ -256,27 +253,5 @@ namespace nvrhi::app
         static DeviceManager* CreateD3D11();
         static DeviceManager* CreateD3D12();
         static DeviceManager* CreateVK();
-    };
-
-    class IRenderPass
-    {
-    private:
-        DeviceManager* m_DeviceManager;
-
-    public:
-        explicit IRenderPass(DeviceManager* deviceManager)
-            : m_DeviceManager(deviceManager)
-        { }
-
-        virtual ~IRenderPass() = default;
-
-        virtual void Render(nvrhi::IFramebuffer* framebuffer) { }
-        virtual void Animate(float fElapsedTimeSeconds) { }
-        virtual void BackBufferResizing() { }
-        virtual void BackBufferResized(const uint32_t width, const uint32_t height, const uint32_t sampleCount) { }
-
-        [[nodiscard]] DeviceManager* GetDeviceManager() const { return m_DeviceManager; }
-        [[nodiscard]] nvrhi::IDevice* GetDevice() const { return m_DeviceManager->GetDevice(); }
-        [[nodiscard]] uint32_t GetFrameIndex() const { return m_DeviceManager->GetFrameIndex(); }
     };
 }
