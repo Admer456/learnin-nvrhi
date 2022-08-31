@@ -20,6 +20,9 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
+// Adapted from Donut's DeviceManagerDX11
+// https://github.com/NVIDIAGameWorks/donut/blob/main/src/app/dx11/DeviceManager_DX11.cpp
+
 #include <string>
 
 #include "DeviceManager.hpp"
