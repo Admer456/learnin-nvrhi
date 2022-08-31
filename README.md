@@ -16,8 +16,9 @@ Right now it looks like this:
 We got glTF loading, texture loading with stb_image, and some basic exponential fog. ^w^
 
 Functionality todo:
+* figure out how to create a proper depth attachment for DirectX 11
 * handle resizing windows
-* handle fullscreen
+* test fullscreen
 * test on my 2012 Linux laptop
 
 Experimentation todo:
@@ -26,11 +27,11 @@ Experimentation todo:
 * skeletal animation
 
 Cleanup todo:
-* separate stuff more (Common.hpp seems to cause slow compile times)
+* speed up compile times and separate more things into smaller headers
 * simplify CMakeLists for this thing
 
 Once some more things are done, I'll be using NVRHI as a render backend for [my engine](https://github.com/Admer456/btx-engine).
 
 --------------
 
-Licenced under MIT, with parts of code derived from Donut (DeviceManagerVK.cpp, DeviceManagerDX12.cpp), licenced by nVidia under the MIT licence.
+Licenced under MIT, with parts of code derived from Donut (DeviceManagerVK.cpp, DeviceManagerDX11.cpp, DeviceManagerDX12.cpp), licenced by nVidia under the MIT licence.
