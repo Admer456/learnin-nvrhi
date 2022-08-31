@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Common.hpp"
+#include "DeviceManager.hpp"
 
 #include "SDL_video.h"
 #include "SDL_syswm.h"
@@ -50,7 +51,7 @@ namespace System
 		return false;
 	}
 
-	void PopulateWindowData( SDL_Window * window, nvrhi::app::WindowSurfaceData & outData )
+	void PopulateWindowData( SDL_Window* window, nvrhi::app::WindowSurfaceData& outData )
 	{
 		SDL_SysWMinfo info;
 		SDL_VERSION( &info.version );

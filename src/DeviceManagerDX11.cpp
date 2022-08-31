@@ -21,8 +21,6 @@
 */
 
 #include <string>
-#include <algorithm>
-#include <locale>
 
 #include "DeviceManager.hpp"
 
@@ -37,8 +35,20 @@
 #pragma comment(lib, "dxgi.lib")
 
 using nvrhi::RefCountPtr;
-
 using namespace nvrhi::app;
+
+static D3D_FEATURE_LEVEL ConvertFeatureLevel( Direct3DFeatureLevels::Type featureLevel )
+{
+    switch ( featureLevel )
+    {
+    case Direct3DFeatureLevels::L11_0: return D3D_FEATURE_LEVEL_11_0;
+    case Direct3DFeatureLevels::L11_1: return D3D_FEATURE_LEVEL_11_1;
+    case Direct3DFeatureLevels::L12_0: return D3D_FEATURE_LEVEL_12_0;
+    case Direct3DFeatureLevels::L12_1: return D3D_FEATURE_LEVEL_12_1;
+    }
+
+    return D3D_FEATURE_LEVEL_11_1;
+}
 
 class DeviceManager_DX11 : public DeviceManager
 {
@@ -323,12 +333,13 @@ bool DeviceManager_DX11::CreateDeviceAndSwapChain()
     if (m_DeviceParams.enableDebugRuntime)
         createFlags |= D3D11_CREATE_DEVICE_DEBUG;
 
+    const D3D_FEATURE_LEVEL featureLevel = ConvertFeatureLevel( m_DeviceParams.featureLevel );
     const HRESULT hr = D3D11CreateDeviceAndSwapChain(
         targetAdapter, // pAdapter
         D3D_DRIVER_TYPE_UNKNOWN, // DriverType
         nullptr, // Software
         createFlags, // Flags
-        &m_DeviceParams.featureLevel, // pFeatureLevels
+        &featureLevel, // pFeatureLevels
         1, // FeatureLevels
         D3D11_SDK_VERSION, // SDKVersion
         &m_SwapChainDesc, // pSwapChainDesc

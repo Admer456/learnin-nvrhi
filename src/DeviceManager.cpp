@@ -25,29 +25,9 @@
 
 #include "DeviceManager.hpp"
 #include <nvrhi/utils.h>
-
-#include <cstdio>
-#include <iomanip>
-#include <thread>
-#include <sstream>
-using namespace std::string_literals;
-
-#if USE_DX11
-#include <d3d11.h>
-#endif
-
-#if USE_DX12
-#include <d3d12.h>
-#endif
-
-#ifdef _WINDOWS
-#include <ShellScalingApi.h>
-#pragma comment(lib, "shcore.lib")
-#endif
-
-#include "Text/Format.hpp"
 #include <iostream>
 
+using namespace std::string_literals;
 using namespace nvrhi::app;
 
 bool DeviceManager::CreateWindowDeviceAndSwapChain(const DeviceCreationParameters& params)

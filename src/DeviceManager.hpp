@@ -29,21 +29,11 @@
 #include <DXGI.h>
 #endif
 
-#if USE_DX11
-#include <d3d11.h>
-#endif
-
-#if USE_DX12
-#include <d3d12.h>
-#endif
-
 #if USE_VK
 #include <nvrhi/vulkan.h>
 #endif
 
 #include <nvrhi/nvrhi.h>
-
-#include <functional>
 
 namespace nvrhi::app
 {
@@ -56,6 +46,19 @@ namespace nvrhi::app
         uint32_t alphaBits;
         uint32_t depthBits;
         uint32_t stencilBits;
+    };
+
+    // Read more:
+    // https://docs.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-devices-downlevel-intro
+    struct Direct3DFeatureLevels
+    {
+        enum Type
+        {
+            L11_0 = 0,
+            L11_1,
+            L12_0,
+            L12_1,
+        };
     };
 
     // You'll need to set up your window's format bits according to this
@@ -104,9 +107,7 @@ namespace nvrhi::app
     struct DeviceCreationParameters
     {
         nvrhi::IMessageCallback* messageCallback = nullptr;
-
         std::vector<std::string> frameworkExtensions;
-
         WindowSurfaceData windowSurfaceData;
 
         bool startMaximized = false;
@@ -139,12 +140,12 @@ namespace nvrhi::app
 
         // For use in the case of multiple adapters; only effective if 'adapter' is null. If this is non-null, device creation will try to match
         // the given string against an adapter name.  If the specified string exists as a sub-string of the
-        // adapter name, the device and window will be created on that adapter.  Case sensitive.
+        // adapter name, the device and window will be created on that adapter. Case sensitive.
         std::wstring adapterNameSubstring = L"";
 
 #if USE_DX11 || USE_DX12
         DXGI_USAGE swapChainUsage = DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_1;
+        Direct3DFeatureLevels::Type featureLevel = Direct3DFeatureLevels::L11_1;
 #endif
 
 #if USE_VK
@@ -155,7 +156,6 @@ namespace nvrhi::app
         std::vector<std::string> optionalVulkanDeviceExtensions;
         std::vector<std::string> optionalVulkanLayers;
         std::vector<size_t> ignoredVulkanValidationMessageLocations;
-        std::function<void(vk::DeviceCreateInfo&)> deviceCreateInfoCallback;
 #endif
     };
 

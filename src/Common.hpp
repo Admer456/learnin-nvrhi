@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-#include "DeviceManager.hpp"
+#include <nvrhi/nvrhi.h>
 #include <nvrhi/utils.h>
 
 #include <glm/glm.hpp>
@@ -248,6 +248,14 @@ namespace Shader
 {
 	using ShaderBinary = std::vector<uint8_t>;
 	bool LoadShaderBinary( const char* fileName, ShaderBinary& outShaderBinary );
+}
+
+namespace nvrhi
+{
+	namespace app
+	{
+		struct WindowSurfaceData;
+	}
 }
 
 namespace System

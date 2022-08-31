@@ -6,6 +6,7 @@ using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 #include "Common.hpp"
+#include "DeviceManager.hpp"
 
 #include "SDL.h"
 

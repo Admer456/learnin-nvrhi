@@ -24,7 +24,6 @@
 // https://github.com/NVIDIAGameWorks/donut/blob/main/src/app/dx12/DeviceManager_DX12.cpp
 
 #include <string>
-#include <algorithm>
 #include <vector>
 
 #include "DeviceManager.hpp"
@@ -36,17 +35,26 @@
 #include <nvrhi/d3d12.h>
 #include <nvrhi/validation.h>
 
-#include <sstream>
-#include "Text/Format.hpp"
-
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
 
+using nvrhi::RefCountPtr;
 using namespace nvrhi::app;
 
-using nvrhi::RefCountPtr;
-
 #define HR_RETURN(hr) if(FAILED(hr)) return false
+
+static D3D_FEATURE_LEVEL ConvertFeatureLevel( Direct3DFeatureLevels::Type featureLevel )
+{
+	switch ( featureLevel )
+	{
+	case Direct3DFeatureLevels::L11_0: return D3D_FEATURE_LEVEL_11_0;
+	case Direct3DFeatureLevels::L11_1: return D3D_FEATURE_LEVEL_11_1;
+	case Direct3DFeatureLevels::L12_0: return D3D_FEATURE_LEVEL_12_0;
+	case Direct3DFeatureLevels::L12_1: return D3D_FEATURE_LEVEL_12_1;
+	}
+
+	return D3D_FEATURE_LEVEL_11_1;
+}
 
 class DeviceManager_DX12 : public DeviceManager
 {
@@ -325,7 +333,7 @@ bool DeviceManager_DX12::CreateDeviceAndSwapChain()
 
 	hr = D3D12CreateDevice(
 		targetAdapter,
-		m_DeviceParams.featureLevel,
+		ConvertFeatureLevel( m_DeviceParams.featureLevel ),
 		IID_PPV_ARGS( &m_Device12 ) );
 	HR_RETURN( hr );
 
