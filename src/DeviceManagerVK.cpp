@@ -34,9 +34,19 @@
 #include <nvrhi/vulkan.h>
 #include <nvrhi/validation.h>
 
-#include "Text/Format.hpp"
-
 using namespace nvrhi::app;
+
+const char* va( const char* message, ... )
+{
+	static char buffer[4096];
+	va_list arguments;
+
+	va_start( arguments, message );
+	vsprintf( buffer, message, arguments );
+	va_end( arguments );
+
+	return buffer;
+}
 
 // Define the Vulkan dynamic dispatcher - this needs to occur in exactly one cpp file in the program.
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
@@ -245,13 +255,17 @@ private:
 
 		if ( manager )
 		{
+			// Vulkan stuff is super wordy
+			const_cast<DeviceManager_VK*>( manager )->Message( 
+				va( "[Vulkan: location=0x%zx code=%d, layerPrefix='%s'] %s", location, code, layerPrefix, msg ), 
+				nvrhi::MessageSeverity::Warning );
+			
 			const auto& ignored = manager->m_DeviceParams.ignoredVulkanValidationMessageLocations;
 			const auto found = std::find( ignored.begin(), ignored.end(), location );
 			if ( found != ignored.end() )
 				return VK_FALSE;
 		}
 
-		log::message( nvrhi::MessageSeverity::Warning, adm::format( "[Vulkan: location=0x%zx code=%d, layerPrefix='%s'] %s", location, code, layerPrefix, msg ) );
 
 		return VK_FALSE;
 	}
@@ -324,14 +338,14 @@ bool DeviceManager_VK::createInstance()
 		for ( const auto& ext : requiredExtensions )
 			ss << std::endl << "  - " << ext;
 
-		log::error( ss.str().c_str() );
+		Error( ss.str().c_str() );
 		return false;
 	}
 
-	log::message( m_DeviceParams.infoLogSeverity, "Enabled Vulkan instance extensions:" );
+	Message( "Enabled Vulkan instance extensions:", m_DeviceParams.infoLogSeverity );
 	for ( const auto& ext : enabledExtensions.instance )
 	{
-		log::message( m_DeviceParams.infoLogSeverity, adm::format( "    %s", ext.c_str() ) );
+		Message( va( "    %s", ext.c_str() ), m_DeviceParams.infoLogSeverity );
 	}
 
 	std::unordered_set<std::string> requiredLayers = enabledExtensions.layers;
@@ -354,14 +368,14 @@ bool DeviceManager_VK::createInstance()
 		for ( const auto& ext : requiredLayers )
 			ss << std::endl << "  - " << ext;
 
-		log::error( ss.str().c_str() );
+		Error( ss.str().c_str() );
 		return false;
 	}
 
-	log::message( m_DeviceParams.infoLogSeverity, "Enabled Vulkan layers:" );
+	Message( "Enabled Vulkan layers:", m_DeviceParams.infoLogSeverity );
 	for ( const auto& layer : enabledExtensions.layers )
 	{
-		log::message( m_DeviceParams.infoLogSeverity, adm::format( "    %s", layer.c_str() ) );
+		Message( va( "    %s", layer.c_str() ), m_DeviceParams.infoLogSeverity );
 	}
 
 	auto instanceExtVec = stringSetToVector( enabledExtensions.instance );
@@ -381,7 +395,7 @@ bool DeviceManager_VK::createInstance()
 	const vk::Result res = vk::createInstance( &info, nullptr, &m_VulkanInstance );
 	if ( res != vk::Result::eSuccess )
 	{
-		log::error( adm::format( "Failed to create a Vulkan instance, error code = %s", nvrhi::vulkan::resultToString( res ) ) );
+		Error( va( "Failed to create a Vulkan instance, error code = %s", nvrhi::vulkan::resultToString( res ) ) );
 		return false;
 	}
 
@@ -539,7 +553,7 @@ bool DeviceManager_VK::pickPhysicalDevice()
 		return true;
 	}
 
-	log::error( errorStream.str().c_str() );
+	Error( errorStream.str().c_str() );
 
 	return false;
 }
@@ -548,7 +562,7 @@ bool DeviceManager_VK::findQueueFamilies( vk::PhysicalDevice physicalDevice )
 {
 	auto props = physicalDevice.getQueueFamilyProperties();
 
-	log::message( nvrhi::MessageSeverity::Info, adm::format( "Physical device has %i queue families", int( props.size() ) ) );
+	Message( va( "Physical device has %i queue families", int( props.size() ) ) );
 
 	for ( int i = 0; i < int( props.size() ); i++ )
 	{
@@ -630,10 +644,10 @@ bool DeviceManager_VK::createDevice()
 	bool meshletsSupported = false;
 	bool vrsSupported = false;
 
-	log::message( m_DeviceParams.infoLogSeverity, "Enabled Vulkan device extensions:" );
+	Message( "Enabled Vulkan device extensions:", m_DeviceParams.infoLogSeverity );
 	for ( const auto& ext : enabledExtensions.device )
 	{
-		log::message( m_DeviceParams.infoLogSeverity, adm::format( "    %s", ext.c_str() ) );
+		Message( va( "    %s", ext.c_str() ), m_DeviceParams.infoLogSeverity );
 
 		if ( ext == VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME )
 			accelStructSupported = true;
@@ -733,7 +747,7 @@ bool DeviceManager_VK::createDevice()
 	const vk::Result res = m_VulkanPhysicalDevice.createDevice( &deviceDesc, nullptr, &m_VulkanDevice );
 	if ( res != vk::Result::eSuccess )
 	{
-		log::error( adm::format( "Failed to create a Vulkan physical device, error code = %s", nvrhi::vulkan::resultToString( res ) ) );
+		Error( va( "Failed to create a Vulkan physical device, error code = %s", nvrhi::vulkan::resultToString( res ) ) );
 		return false;
 	}
 
@@ -750,7 +764,7 @@ bool DeviceManager_VK::createDevice()
 	auto prop = m_VulkanPhysicalDevice.getProperties();
 	m_RendererString = std::string( prop.deviceName.data() );
 
-	log::message( m_DeviceParams.infoLogSeverity, adm::format( "Created Vulkan device: %s", m_RendererString.c_str() ) );
+	Message( va( "Created Vulkan device: %s", m_RendererString.c_str() ), m_DeviceParams.infoLogSeverity );
 
 	return true;
 }
@@ -773,7 +787,7 @@ bool DeviceManager_VK::createWindowSurface()
 
 	if ( res != vk::Result::eSuccess )
 	{
-		log::error( adm::format( "Failed to create a window surface, error code = %s", nvrhi::vulkan::resultToString( res ) ) );
+		Error( va( "Failed to create a window surface, error code = %s", nvrhi::vulkan::resultToString( res ) ) );
 		return false;
 	}
 
@@ -850,7 +864,7 @@ bool DeviceManager_VK::createSwapChain()
 	const vk::Result res = m_VulkanDevice.createSwapchainKHR( &desc, nullptr, &m_SwapChain );
 	if ( res != vk::Result::eSuccess )
 	{
-		log::error( adm::format( "Failed to create a Vulkan swap chain, error code = %s", nvrhi::vulkan::resultToString( res ) ) );
+		Error( va( "Failed to create a Vulkan swap chain, error code = %s", nvrhi::vulkan::resultToString( res ) ) );
 		return false;
 	}
 

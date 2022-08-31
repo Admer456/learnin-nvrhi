@@ -48,12 +48,6 @@
 
 namespace nvrhi::app
 {
-    namespace log
-    {
-        void error( const char* string );
-        void message( nvrhi::MessageSeverity severity, const char* string );
-    }
-
     struct FormatInfo
     {
         nvrhi::Format format;
@@ -225,6 +219,10 @@ namespace nvrhi::app
         [[nodiscard]] virtual nvrhi::IDevice *GetDevice() const = 0;
         [[nodiscard]] virtual const char *GetRendererString() const = 0;
         [[nodiscard]] virtual nvrhi::GraphicsAPI GetGraphicsAPI() const = 0;
+
+        void Message( const char* message, nvrhi::MessageSeverity severity = nvrhi::MessageSeverity::Info );
+        void Error( const char* message );
+        void Fatal( const char* message );
 
         const DeviceCreationParameters& GetDeviceParams();
         [[nodiscard]] double GetAverageFrameTimeSeconds() const { return m_AverageFrameTime; }

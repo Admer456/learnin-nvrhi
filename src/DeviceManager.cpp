@@ -30,6 +30,7 @@
 #include <iomanip>
 #include <thread>
 #include <sstream>
+using namespace std::string_literals;
 
 #if USE_DX11
 #include <d3d11.h>
@@ -48,35 +49,6 @@
 #include <iostream>
 
 using namespace nvrhi::app;
-
-void log::error( const char* string )
-{
-    return log::message( nvrhi::MessageSeverity::Error, string );
-}
-
-void log::message( nvrhi::MessageSeverity severity, const char* string )
-{
-    const char* severityString = [&severity]()
-    {
-        using nvrhi::MessageSeverity;
-        switch ( severity )
-        {
-        case MessageSeverity::Info: return "[INFO]";
-        case MessageSeverity::Warning: return "[WARNING]";
-        case MessageSeverity::Error: return "[ERROR]";
-        case MessageSeverity::Fatal: return "[### FATAL ERROR ###]";
-        default: return "[unknown]";
-        }
-    }();
-
-    std::cout << "NVRHI::" << severityString << " " << string << std::endl;
-
-    if ( severity == nvrhi::MessageSeverity::Fatal )
-    {
-        std::cout << "Fatal error encountered, look above ^" << std::endl;
-        std::cout << "=====================================" << std::endl;
-    }
-}
 
 bool DeviceManager::CreateWindowDeviceAndSwapChain(const DeviceCreationParameters& params)
 {
@@ -115,6 +87,25 @@ void DeviceManager::GetWindowDimensions(int& width, int& height)
 {
     width = m_DeviceParams.backBufferWidth;
     height = m_DeviceParams.backBufferHeight;
+}
+
+void DeviceManager::Message( const char* message, nvrhi::MessageSeverity severity )
+{
+    if ( nullptr != m_DeviceParams.messageCallback )
+    {
+        auto*& printer = m_DeviceParams.messageCallback;
+        printer->message( severity, message );
+    }
+}
+
+void DeviceManager::Error( const char* message )
+{
+    return Message( message, nvrhi::MessageSeverity::Error );
+}
+
+void DeviceManager::Fatal( const char* message )
+{
+    return Message( message, nvrhi::MessageSeverity::Fatal );
 }
 
 const DeviceCreationParameters& DeviceManager::GetDeviceParams()
@@ -172,6 +163,21 @@ nvrhi::IFramebuffer* nvrhi::app::DeviceManager::GetFramebuffer(uint32_t index)
     return nullptr;
 }
 
+namespace std
+{
+    std::string to_string( nvrhi::GraphicsAPI api )
+    {
+        switch ( api )
+        {
+        case nvrhi::GraphicsAPI::D3D11: return "D3D11";
+        case nvrhi::GraphicsAPI::D3D12: return "D3D12";
+        case nvrhi::GraphicsAPI::VULKAN: return "VULKAN";
+        }
+
+        return "unknown";
+    }
+}
+
 nvrhi::app::DeviceManager* nvrhi::app::DeviceManager::Create(nvrhi::GraphicsAPI api)
 {
     switch (api)
@@ -189,7 +195,7 @@ nvrhi::app::DeviceManager* nvrhi::app::DeviceManager::Create(nvrhi::GraphicsAPI 
         return CreateVK();
 #endif
     default:
-        log::error(adm::format("DeviceManager::Create: Unsupported Graphics API (%d)", api));
+        std::cout << "DeviceManager::Create: Unsupported graphics API: " << std::to_string( api ) << std::endl;
         return nullptr;
     }
 }

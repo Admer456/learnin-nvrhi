@@ -111,15 +111,6 @@ static bool IsNvDeviceID( UINT id )
 	return id == 0x10DE;
 }
 
-static void LogError( DeviceManager_DX12* deviceManager, const char* errorString )
-{
-	auto* messageCallback = deviceManager->GetDeviceParams().messageCallback;
-	if ( nullptr != messageCallback )
-	{
-		messageCallback->message( nvrhi::MessageSeverity::Error, errorString );
-	}
-}
-
 // Find an adapter whose name contains the given string.
 static RefCountPtr<IDXGIAdapter> FindAdapter( DeviceManager_DX12* deviceManager, const std::wstring& targetName )
 {
@@ -128,7 +119,7 @@ static RefCountPtr<IDXGIAdapter> FindAdapter( DeviceManager_DX12* deviceManager,
 	HRESULT hres = CreateDXGIFactory1( IID_PPV_ARGS( &DXGIFactory ) );
 	if ( hres != S_OK )
 	{
-		LogError( deviceManager, "ERROR in CreateDXGIFactory.\n"
+		deviceManager->Error( "ERROR in CreateDXGIFactory.\n"
 			"For more info, get log from debug D3D runtime: (1) Install DX SDK, and enable Debug D3D from DX Control Panel Utility. (2) Install and start DbgView. (3) Try running the program again.\n" );
 		return targetAdapter;
 	}
@@ -237,9 +228,14 @@ bool DeviceManager_DX12::CreateDeviceAndSwapChain()
 
 		if ( !targetAdapter )
 		{
-			std::wstring adapterNameStr( m_DeviceParams.adapterNameSubstring.begin(), m_DeviceParams.adapterNameSubstring.end() );
+#pragma warning(push)
+#pragma warning(disable: 4244) // warning C4244: 'argument': conversion from 'wchar_t' to 'const _Elem', possible loss of data
+			// There is no standard way to do the conversion safely in c++17, std::codecvt is deprecated.
+			std::string adapterNameStr( m_DeviceParams.adapterNameSubstring.begin(), m_DeviceParams.adapterNameSubstring.end() );
+#pragma warning(pop)
 
-			LogError( this, adm::format( "Could not find an adapter matching %s\n", adapterNameStr.c_str() ) );
+			std::string errorMessage = "Could not find an adapter matching '" + adapterNameStr + "'\n";
+			Error( errorMessage.c_str() );
 			return false;
 		}
 	}
