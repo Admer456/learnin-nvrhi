@@ -967,7 +967,7 @@ int main( int argc, char** argv )
 		bool unknownParams = false;
 
 		ss << "Unrecognised parameter(s): " << std::endl;
-		for ( int i = 0; i < argc; i++ )
+		for ( int i = 1; i < argc; i++ )
 		{
 			if ( argv[i] == "-dx12"sv )
 			{
