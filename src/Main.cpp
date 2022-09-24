@@ -667,9 +667,9 @@ namespace Renderer
 
 		glm::vec3 vForward, vRight, vUp;
 		CalculateDirections( angles, vForward, vRight, vUp );
-		vRight *= -1.0f;
+		//vRight *= -1.0f;
 
-		return glm::lookAt( position, position + vForward, vUp );
+		//return glm::lookAt( position, position + vForward, vUp );
 
 		glm::mat4 m( 1.0f );
 		m[x][forward] = -vForward.x;
