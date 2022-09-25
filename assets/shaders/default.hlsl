@@ -1,5 +1,8 @@
 
-#pragma pack_matrix(row_major)
+// In earlier versions of Learnin' NVRHI / nvrhiTest, I was using GLM which had row-major matrices
+// Now it is no longer necessary, but note that you'll need to use this if you use row-major matrices with HLSL: 
+//#pragma pack_matrix(row_major)
+// ...because HLSL is column-major
 
 #ifdef SPIRV
 #define VK_PUSH_CONSTANT [[vk::push_constant]]
