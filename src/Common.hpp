@@ -9,8 +9,6 @@
 #include <nvrhi/nvrhi.h>
 #include <nvrhi/utils.h>
 
-#include <glm/glm.hpp>
-
 struct SDL_Window;
 
 inline bool Check( void* ptr, const char* message )
@@ -89,10 +87,10 @@ namespace Model
 {
 	struct DrawVertex
 	{
-		glm::vec3 vertexPosition;
-		glm::vec3 vertexNormal;
-		glm::vec2 vertexTextureCoords;
-		glm::vec4 vertexColour;
+		adm::Vec3 vertexPosition;
+		adm::Vec3 vertexNormal;
+		adm::Vec2 vertexTextureCoords;
+		adm::Vec4 vertexColour;
 	};
 
 	struct DrawSurface

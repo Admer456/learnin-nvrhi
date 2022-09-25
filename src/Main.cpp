@@ -10,8 +10,6 @@ using namespace std::string_view_literals;
 
 #include "SDL.h"
 
-#include <glm/gtc/matrix_transform.hpp>
-
 namespace Renderer
 {
 	nvrhi::app::DeviceManager* DeviceManager;
@@ -66,7 +64,7 @@ namespace Renderer
 		struct RenderEntity
 		{
 			int32_t renderModelIndex{ -1 };
-			glm::mat4 transform;
+			adm::Mat4 transform;
 
 			// Todo: expand these with surface indices
 
@@ -115,24 +113,30 @@ namespace Renderer
 	// Data that changes per frame
 	struct ConstantBufferData
 	{
-		glm::mat4 viewMatrix;
-		glm::mat4 projectionMatrix;
+		adm::Mat4 viewMatrix;
+		adm::Mat4 projectionMatrix;
 		float time;
 	};
 	// Data that changes per render entity
 	struct ConstantBufferDataEntity
 	{
-		glm::mat4 entityMatrix;
+		adm::Mat4 entityMatrix;
 	};
 	// There is also data that changes per render surface,
 	// i.e. the texture(s), look at Common.hpp::Model::RenderSurface
 
 	constexpr float MaxViewDistance = 100.0f;
+	constexpr float deg2rad = (3.14159f) / 180.0f;
 
 	ConstantBufferData TransformData
 	{
-		glm::identity<glm::mat4>(),
-		glm::perspectiveZO( glm::radians( 105.0f ), 16.0f / 9.0f, 0.01f, MaxViewDistance ),
+		// View matrix
+		adm::Mat4::Identity,
+		//adm::Mat4::View( adm::Vec3{ 0.0f, 0.0f, 0.0f }, adm::Vec3{ -45.0f, 45.0f, 0.0f } ),
+		// Projection matrix
+		adm::Mat4::Perspective( 105.0f * deg2rad, 16.0f / 9.0f, 0.01f, MaxViewDistance ),
+		//adm::Mat4::Orthographic( -10.0f, 10.0f, 10.0f, -10.0f, 0.01f, MaxViewDistance ),
+		// Time
 		0.0f
 	};
 
@@ -295,19 +299,19 @@ namespace Renderer
 			nvrhi::VertexAttributeDesc()
 			.setName( "NORMAL" )
 			.setFormat( nvrhi::Format::RGB32_FLOAT )
-			.setOffset( sizeof( glm::vec3 ) )
+			.setOffset( sizeof( adm::Vec3 ) )
 			.setElementStride( sizeof( Model::DrawVertex ) ),
 
 			nvrhi::VertexAttributeDesc()
 			.setName( "TEXCOORD" )
 			.setFormat( nvrhi::Format::RG32_FLOAT )
-			.setOffset( sizeof( glm::vec3 ) + sizeof( glm::vec3 ) )
+			.setOffset( sizeof( adm::Vec3 ) + sizeof( adm::Vec3 ) )
 			.setElementStride( sizeof( Model::DrawVertex ) ),
 
 			nvrhi::VertexAttributeDesc()
 			.setName( "COLOR" )
 			.setFormat( nvrhi::Format::RGBA32_FLOAT )
-			.setOffset( sizeof( glm::vec3 ) + sizeof( glm::vec3 ) + sizeof( glm::vec2 ) )
+			.setOffset( sizeof( adm::Vec3 ) + sizeof( adm::Vec3 ) + sizeof( adm::Vec2 ) )
 			.setElementStride( sizeof( Model::DrawVertex ) ),
 		};
 		Scene::InputLayout = Device->createInputLayout( sceneVertexAttributes, std::size( sceneVertexAttributes ), Scene::VertexShader );
@@ -384,7 +388,7 @@ namespace Renderer
 			return false;
 
 		auto depthAttachmentDesc = colourAttachmentDesc
-			.setFormat( nvrhi::Format::D32 )
+			.setFormat( (graphicsApi == nvrhi::GraphicsAPI::D3D11) ? nvrhi::Format::D24S8 : nvrhi::Format::D32 )
 			.setDimension( nvrhi::TextureDimension::Texture2D )
 			.setInitialState( DepthBufferStates )
 			.setDebugName( "Depth attachment image" );
@@ -534,20 +538,22 @@ namespace Renderer
 
 	void LoadEntities()
 	{
-		const auto createEntity = []( const char* modelPath, glm::vec3 position, glm::mat4 orientation )
+		const auto createEntity = []( const char* modelPath, adm::Vec3 position, adm::Mat4 orientation )
 		{
 			RenderEntities.push_back( {} );
 			auto& re = RenderEntities.back();
 
 			re.renderModelIndex = Model::LoadRenderModelFromGltf( modelPath );
-			re.transform = glm::translate( glm::identity<glm::mat4>(), position ) * orientation;
+			//re.transform = glm::translate( glm::identity<adm::Mat4>(), position ) * orientation;
+			// We'll need a Mat4::Translation one day
+			re.transform = orientation;
 		};
 
 		// Create default texture
 		Texture::FindOrCreateMaterial( nullptr );
 
-		createEntity( "assets/TestEnvironment.glb", { 0.0f, 0.0f, 0.0f }, glm::identity<glm::mat4>() );
-		createEntity( "assets/MossPatch.glb", { 0.0f, 0.0f, 0.0f }, glm::identity<glm::mat4>() );
+		createEntity( "assets/TestEnvironment.glb", { 0.0f, 0.0f, 0.0f }, adm::Mat4::Identity );
+		createEntity( "assets/MossPatch.glb", { 0.0f, 0.0f, 0.0f }, adm::Mat4::Identity );
 	}
 
 	void RenderScreenQuad()
@@ -594,7 +600,7 @@ namespace Renderer
 		for ( const auto& renderEntity : RenderEntities )
 		{
 			// Update per-entity transform data
-			CommandList->writeBuffer( Scene::ConstantBufferEntity, &renderEntity.transform, sizeof( glm::mat4 ) );
+			CommandList->writeBuffer( Scene::ConstantBufferEntity, &renderEntity.transform, sizeof( adm::Mat4 ) );
 
 			// Draw all surfaces
 			for ( const auto& renderSurface : renderEntity.GetRenderSurfaces() )
@@ -625,15 +631,15 @@ namespace Renderer
 	// Positive pitch will make the forward axis go up
 	// Positive yaw will make forward and right spin counter-clockwise (if you want it the other way, put -angles.y
 	// Positive roll will make the up axis rotate clockwise about the forward axis
-	void CalculateDirections( const glm::vec3& angles, glm::vec3& forward, glm::vec3& right, glm::vec3& up )
+	void CalculateDirections( const adm::Vec3& angles, adm::Vec3& forward, adm::Vec3& right, adm::Vec3& up )
 	{
-		const float cosPitch = std::cos( glm::radians( -angles.x ) );
-		const float cosYaw = std::cos( glm::radians( angles.y ) );
-		const float cosRoll = std::cos( glm::radians( angles.z ) );
+		const float cosPitch = std::cos( -angles.x * deg2rad );
+		const float cosYaw = std::cos( angles.y * deg2rad );
+		const float cosRoll = std::cos( angles.z * deg2rad );
 
-		const float sinPitch = std::sin( glm::radians( -angles.x ) );
-		const float sinYaw = std::sin( glm::radians( angles.y ) );
-		const float sinRoll = std::sin( glm::radians( angles.z ) );
+		const float sinPitch = std::sin( -angles.x * deg2rad );
+		const float sinYaw = std::sin( angles.y * deg2rad );
+		const float sinRoll = std::sin( angles.z * deg2rad );
 
 		forward =
 		{
@@ -649,54 +655,22 @@ namespace Renderer
 			(cosPitch * cosRoll)
 		};
 	
-		right = glm::cross( forward, up );
+		right = forward.Cross( up );
 	}
 
 	// Adapted from glm::lookAt
-	glm::mat4 CalculateViewMatrix( const glm::vec3& position, const glm::vec3& angles )
+	adm::Mat4 CalculateViewMatrix( const adm::Vec3& position, const adm::Vec3& angles )
 	{
-		constexpr int forward = 2;
-		constexpr int right = 0;
-		constexpr int up = 1;
-		constexpr int pos = 3;
-
-		constexpr int x = 0;
-		constexpr int y = 1;
-		constexpr int z = 2;
-		constexpr int w = 3;
-
-		glm::vec3 vForward, vRight, vUp;
-		CalculateDirections( angles, vForward, vRight, vUp );
-		//vRight *= -1.0f;
-
-		//return glm::lookAt( position, position + vForward, vUp );
-
-		glm::mat4 m( 1.0f );
-		m[x][forward] = -vForward.x;
-		m[y][forward] = -vForward.y;
-		m[z][forward] = -vForward.z;
-
-		m[x][right] = vRight.x;
-		m[y][right] = vRight.y;
-		m[z][right] = vRight.z;
-		
-		m[x][up] = vUp.x;
-		m[y][up] = vUp.y;
-		m[z][up] = vUp.z;
-
-		m[pos][forward] = glm::dot( vForward, position );
-		m[pos][right] = -glm::dot( vRight, position );
-		m[pos][up] = -glm::dot( vUp, position );
-
-		return m;
+		//return adm::Mat4::Identity;
+		return adm::Mat4::View( position, angles );
 	}
 
 	void Update( float deltaTime )
 	{
-		static glm::vec3 viewPosition{};
-		static glm::vec3 viewAngles{ 0.0f, 0.0f, 0.0f };
+		static adm::Vec3 viewPosition{};
+		static adm::Vec3 viewAngles{ 0.0f, 0.0f, 0.0f };
 
-		glm::vec3 viewForward, viewRight, viewUp;
+		adm::Vec3 viewForward, viewRight, viewUp;
 		CalculateDirections( viewAngles, viewForward, viewRight, viewUp );
 
 		// Update view angles

@@ -116,17 +116,21 @@ namespace Model
 				{
 					DrawVertex vertex;
 
-					vertex.vertexPosition = *(reinterpret_cast<const glm::vec3*>(vertexPositionBuffer.data) + i);
-					vertex.vertexNormal = *(reinterpret_cast<const glm::vec3*>(vertexNormalBuffer.data) + i);
-					vertex.vertexTextureCoords = *(reinterpret_cast<const glm::vec2*>(vertexTexcoordBuffer.data) + i);
+					vertex.vertexPosition = *(reinterpret_cast<const adm::Vec3*>(vertexPositionBuffer.data) + i);
+					vertex.vertexNormal = *(reinterpret_cast<const adm::Vec3*>(vertexNormalBuffer.data) + i);
+					vertex.vertexTextureCoords = *(reinterpret_cast<const adm::Vec2*>(vertexTexcoordBuffer.data) + i);
 					// Vertex colour is RGBA uint16_t
 					if ( nullptr != vertexColourBuffer.data )
 					{
-						glm::u16vec4 vc = *(reinterpret_cast<const glm::u16vec4*>(vertexColourBuffer.data) + i);
-						vertex.vertexColour.x = vc.x / 65536.0f;
-						vertex.vertexColour.y = vc.y / 65536.0f;
-						vertex.vertexColour.z = vc.z / 65536.0f;
-						vertex.vertexColour.w = vc.w / 65536.0f;
+						struct u16vec4
+						{
+							uint16_t x, y, z, w;
+						} const vc = *(reinterpret_cast<const u16vec4*>(vertexColourBuffer.data) + i);
+
+						vertex.vertexColour.m.x = vc.x / 65536.0f;
+						vertex.vertexColour.m.y = vc.y / 65536.0f;
+						vertex.vertexColour.m.z = vc.z / 65536.0f;
+						vertex.vertexColour.m.w = vc.w / 65536.0f;
 					}
 					else
 					{
